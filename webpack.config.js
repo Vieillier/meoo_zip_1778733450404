@@ -1,5 +1,9 @@
 const path = require('path');
+const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+require('dotenv').config({ path: path.resolve(__dirname, '.env.local') });
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 module.exports = (env, argv) => {
   const isDev = argv.mode !== 'production';
@@ -63,11 +67,14 @@ module.exports = (env, argv) => {
       ]
     },
     resolve: {
-      extensions: ['.mjs', '.ts', '.tsx', '.js', '.jsx']
+      extensions: ['.mjs', '.ts', '.tsx', '.js', '.jsx'],
+      fallback: {
+        buffer: require.resolve('buffer/')
+      }
     },
     devServer: {
       host: '0.0.0.0',
-      port: 3015,
+      port: 3016,
       allowedHosts: 'all',
       historyApiFallback: {
         index: '/index.html',
@@ -80,7 +87,11 @@ module.exports = (env, argv) => {
       new HtmlWebpackPlugin({
         template: './index.html',
         inject: 'body'
-      })
+      }),
+      new webpack.DefinePlugin({
+        'process.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
+        'process.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+      }),
     ]
   };
 };
