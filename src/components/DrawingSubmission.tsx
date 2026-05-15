@@ -116,7 +116,10 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
     setLoading(false);
   };
 
-  useEffect(() => { fetchDrawings(); }, [boothNumber]);
+  useEffect(() => {
+    if (isPreviewMode || !boothNumber) return;
+    fetchDrawings();
+  }, [boothNumber, isPreviewMode]);
 
   const hasBeenReviewed = () => !!lastReviewedAt;
 

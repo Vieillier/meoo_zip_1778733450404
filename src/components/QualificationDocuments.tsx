@@ -111,7 +111,10 @@ export default function QualificationDocuments({ boothNumber, isPreviewMode = fa
     setLoading(false);
   };
 
-  useEffect(() => { fetchDocuments(); }, [boothNumber]);
+  useEffect(() => {
+    if (isPreviewMode || !boothNumber) return;
+    fetchDocuments();
+  }, [boothNumber, isPreviewMode]);
 
   const allApproved = () => {
     return DOCUMENT_TYPES.every(({ key }) => reviewState[key.replace('_urls', '_status') as keyof ReviewState] === 'approved');

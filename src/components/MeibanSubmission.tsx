@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { getSupabaseUrl } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken } from '../supabase/client';
 
 interface MeibanSubmissionProps {
   userId: string;
@@ -18,6 +18,8 @@ export default function MeibanSubmission({ userId, isPreviewMode = false }: Meib
 
   // 加载已保存的数据或草稿
   useEffect(() => {
+    if (isPreviewMode || !userId) return;
+
     const loadData = async () => {
       try {
         // 先尝试从服务器加载
@@ -58,7 +60,7 @@ export default function MeibanSubmission({ userId, isPreviewMode = false }: Meib
     };
 
     loadData();
-  }, [userId]);
+  }, [userId, isPreviewMode]);
 
   // 自动保存草稿
   useEffect(() => {

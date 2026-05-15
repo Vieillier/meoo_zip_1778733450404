@@ -250,6 +250,10 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
   useEffect(() => {
     const init = async () => {
+      if (isPreviewMode) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       await checkExistingApplications();
       if (!submitted) {
@@ -258,7 +262,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
       setLoading(false);
     };
     init();
-  }, [checkExistingApplications, loadDraft, submitted]);
+  }, [checkExistingApplications, loadDraft, submitted, isPreviewMode]);
 
   // 自动保存草稿
   useEffect(() => {

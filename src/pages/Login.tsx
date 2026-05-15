@@ -28,10 +28,29 @@ export default function Login() {
         return;
       }
 
+      // Ensure session is available/persisted before proceeding.
+      let sessionResult = await supabase.auth.getSession();
+      let session = sessionResult.data?.session;
+      let attempts = 0;
+      while (!session && attempts < 5) {
+        await new Promise((r) => setTimeout(r, 200));
+        sessionResult = await supabase.auth.getSession();
+        session = sessionResult.data?.session;
+        attempts += 1;
+      }
+
+      if (!session || !session.user) {
+        setError('登录后会话未能建立，请重试');
+        setLoading(false);
+        return;
+      }
+
+      const userId = session.user.id;
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
-        .eq('id', authData.user.id)
+        .eq('id', userId)
         .single();
 
       const role = profile?.role;

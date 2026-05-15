@@ -46,6 +46,7 @@ interface AuthContextType {
   previewRole: UserRole | null;
   enterPreviewMode: (role: UserRole) => void;
   exitPreviewMode: () => void;
+  authMode: 'supabase' | 'local';
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -62,6 +63,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [previewRole, setPreviewRole] = useState<UserRole | null>(null);
+  const [authMode, setAuthMode] = useState<'supabase' | 'local'>('supabase');
 
   const fetchAccountsFromDB = async () => {
     const { supabase } = await import('./supabase/client');
@@ -183,37 +185,60 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error };
     }
 
-    if (data.user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .maybeSingle();
+    // Ensure session persistence before proceeding to load profile/booth and set user.
+    let sessionRes = await supabase.auth.getSession();
+    let session = sessionRes.data?.session;
+    let attempts = 0;
+    while (!session && attempts < 5) {
+      await new Promise((r) => setTimeout(r, 200));
+      sessionRes = await supabase.auth.getSession();
+      session = sessionRes.data?.session;
+      attempts += 1;
+    }
 
-      const { data: booth } = await supabase
-        .from('exhibitor_booths')
-        .select('*')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
-
-      if (profile) {
-        const userAccount: UserAccount = {
-          id: profile.id,
-          username: profile.username,
-          password: '',
-          displayName: profile.display_name || profile.username,
-          role: profile.role as UserRole,
-          phone: profile.phone ?? undefined,
-          email: booth?.email ?? undefined,
-          exhibitorName: booth?.exhibitor_name ?? undefined,
-          hallNumber: booth?.hall_number ?? undefined,
-          boothNumber: booth?.booth_number ?? undefined,
-          boothArea: booth?.booth_area ?? undefined,
-          boothHeight: booth?.booth_height ?? undefined,
-          boothCategory: booth?.booth_category as '标摊' | '特装'
-        };
-        setUser(userAccount);
+    if (!session || !session.user) {
+      // Fall back to local validation if DB auth not available
+      const account = validateLogin(username, password);
+      if (account) {
+        setUser(account);
+        setAuthMode('local');
+        return { error: null };
       }
+      return { error: new Error('Auth session missing after sign-in') };
+    }
+
+    const userId = session.user.id;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const { data: booth } = await supabase
+      .from('exhibitor_booths')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (profile) {
+      const userAccount: UserAccount = {
+        id: profile.id,
+        username: profile.username,
+        password: '',
+        displayName: profile.display_name || profile.username,
+        role: profile.role as UserRole,
+        phone: profile.phone ?? undefined,
+        email: booth?.email ?? undefined,
+        exhibitorName: booth?.exhibitor_name ?? undefined,
+        hallNumber: booth?.hall_number ?? undefined,
+        boothNumber: booth?.booth_number ?? undefined,
+        boothArea: booth?.booth_area ?? undefined,
+        boothHeight: booth?.booth_height ?? undefined,
+        boothCategory: booth?.booth_category as '标摊' | '特装'
+      };
+      setUser(userAccount);
+      setAuthMode('supabase');
     }
 
     return { error: null };
@@ -223,6 +248,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const { supabase } = await import('./supabase/client');
     await supabase.auth.signOut();
     setUser(null);
+    setAuthMode('supabase');
   };
 
   const updateUserPassword = (username: string, newPassword: string) => {
@@ -295,7 +321,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       isPreviewMode,
       previewRole,
       enterPreviewMode,
-      exitPreviewMode
+      exitPreviewMode,
+      authMode
     }}>
       {children}
     </AuthContext.Provider>
@@ -427,13 +454,14 @@ import DrawingSubmission from './components/DrawingSubmission';
 import FeeRulesConfig from './components/FeeRulesConfig';
 
 function ExhibitorDashboard() {
-  const { user, logout, isPreviewMode, previewRole, exitPreviewMode } = useAuth();
+  const { user, logout, isPreviewMode, previewRole, exitPreviewMode, loading: authLoading, authMode } = useAuth();
   const navigate = useNavigate();
   const [accountData, setAccountData] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'facility' | 'meiban' | 'invoice' | 'qualification' | 'drawing'>('info');
 
   useEffect(() => {
+    if (authLoading) return; // wait until auth initialization completes to avoid AuthSessionMissingError
     const fetchUserData = async () => {
       // 预览模式下使用模拟数据
       if (isPreviewMode && previewRole) {
@@ -457,6 +485,14 @@ function ExhibitorDashboard() {
         return;
       }
 
+      // 如果是本地认证模式，直接使用 user 数据
+      if (authMode === 'local' && user) {
+        setAccountData(user);
+        setLoading(false);
+        return;
+      }
+
+      // Supabase 认证模式下的数据加载
       const { supabase } = await import('./supabase/client');
       const { data: authData, error: authError } = await supabase.auth.getUser();
 
@@ -508,7 +544,7 @@ function ExhibitorDashboard() {
     };
 
     fetchUserData();
-  }, [user, isPreviewMode, previewRole]);
+  }, [user, isPreviewMode, previewRole, authLoading, authMode]);
 
   const handleLogout = () => {
     if (isPreviewMode) {

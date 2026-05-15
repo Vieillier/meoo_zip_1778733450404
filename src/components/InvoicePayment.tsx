@@ -80,8 +80,9 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
   };
 
   useEffect(() => {
+    if (isPreviewMode || !boothNumber) return;
     fetchInvoiceInfo();
-  }, [boothNumber]);
+  }, [boothNumber, isPreviewMode]);
 
   useEffect(() => {
     if (!hasSavedData && !loading && boothNumber) {
