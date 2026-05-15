@@ -1452,23 +1452,41 @@ function UserManagementPage() {
       });
 
       if (authError) {
-        alert('创建用户失败: ' + authError.message);
+        console.error('Sign up failed details:', authError);
+        alert('创建用户失败: ' + (authError.message || '未知错误'));
         return;
       }
 
       if (authData.user) {
-        await supabase.from('exhibitor_booths').insert({
-          user_id: authData.user.id,
-          exhibitor_name: newUser.exhibitorName || newUser.displayName,
-          hall_number: newUser.hallNumber,
-          booth_number: newUser.boothNumber,
-          booth_area: newUser.boothArea,
-          booth_height: newUser.boothHeight,
-          booth_category: newUser.boothCategory,
-          contact_name: newUser.displayName,
-          contact_phone: newUser.phone,
-          email: newUser.email
-        });
+        try {
+          // Ensure a corresponding profile row exists for the new auth user.
+          await supabase.from('profiles').insert({
+            id: authData.user.id,
+            username: newUser.username,
+            display_name: newUser.displayName,
+            role: role,
+            phone: newUser.phone
+          });
+        } catch (profileInsertError: any) {
+          console.error('Failed to insert profile record for new user:', profileInsertError);
+        }
+
+        try {
+          await supabase.from('exhibitor_booths').insert({
+            user_id: authData.user.id,
+            exhibitor_name: newUser.exhibitorName || newUser.displayName,
+            hall_number: newUser.hallNumber,
+            booth_number: newUser.boothNumber,
+            booth_area: newUser.boothArea,
+            booth_height: newUser.boothHeight,
+            booth_category: newUser.boothCategory,
+            contact_name: newUser.displayName,
+            contact_phone: newUser.phone,
+            email: newUser.email
+          });
+        } catch (boothInsertError: any) {
+          console.error('Failed to insert exhibitor_booths record for new user:', boothInsertError);
+        }
       }
 
       createUser({ ...newUser, role });
