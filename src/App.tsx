@@ -117,7 +117,52 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    fetchAccountsFromDB();
+    const initializeAuth = async () => {
+      const { supabase } = await import('./supabase/client');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profile && !profileError) {
+          const { data: booth } = await supabase
+            .from('exhibitor_booths')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+          setUser({
+            id: profile.id,
+            username: profile.username,
+            password: '',
+            displayName: profile.display_name || profile.username,
+            role: profile.role as UserRole,
+            phone: profile.phone ?? undefined,
+            email: booth?.email ?? undefined,
+            exhibitorName: booth?.exhibitor_name ?? undefined,
+            hallNumber: booth?.hall_number ?? undefined,
+            boothNumber: booth?.booth_number ?? undefined,
+            boothArea: booth?.booth_area ?? undefined,
+            boothHeight: booth?.booth_height ?? undefined,
+            boothCategory: booth?.booth_category as '标摊' | '特装'
+          });
+        } else {
+          console.warn('Unable to restore authenticated user from persisted session.', {
+            sessionError,
+            profileError,
+            userId: session.user.id,
+          });
+        }
+      }
+
+      await fetchAccountsFromDB();
+    };
+
+    initializeAuth();
   }, []);
 
   const refreshAccounts = () => {
@@ -908,9 +953,8 @@ function ExcelImportModal({
     setIsProcessing(true);
 
     try {
-      const { getSupabaseUrl } = await import('./supabase/client');
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const { getSupabaseUrl, getAuthAccessToken } = await import('./supabase/client');
+      const accessToken = await getAuthAccessToken();
 
       console.log('[Import] Sending request to Edge Function...');
       console.log('[Import] Data:', JSON.stringify({ exhibitors: parsedData }, null, 2));
@@ -1467,9 +1511,8 @@ function UserManagementPage() {
   const handleDeleteUser = async (id: string) => {
     if (!confirm('确定要删除此用户吗?')) return;
 
-    const { supabase, getSupabaseUrl } = await import('./supabase/client');
-    const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-    const accessToken = session.access_token;
+    const { supabase, getSupabaseUrl, getAuthAccessToken } = await import('./supabase/client');
+    const accessToken = await getAuthAccessToken();
 
     try {
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-user`, {

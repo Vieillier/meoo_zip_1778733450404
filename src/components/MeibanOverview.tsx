@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import * as XLSX from 'xlsx';
-import { getSupabaseUrl } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken } from '../supabase/client';
 
 interface MeibanRecord {
   id: string;
@@ -32,8 +32,7 @@ export default function MeibanOverview() {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-meiban`, {
         method: 'POST',

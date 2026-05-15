@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSupabaseUrl, supabase } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken, supabase } from '../supabase/client';
 import PaymentNoticeModal from './PaymentNoticeModal';
 
 interface ApplicationItem {
@@ -135,8 +135,7 @@ export default function ApplicationOverview() {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-applications`, {
         method: 'POST',
         headers: {
@@ -237,8 +236,7 @@ export default function ApplicationOverview() {
     setLoadingInvoice(true);
     setShowInvoiceModal(true);
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-invoice-info`, {
         method: 'POST',
         headers: {

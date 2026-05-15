@@ -10,7 +10,7 @@ import {
   ApplicationItem,
   ApplicationData,
 } from '../constants/facilityData';
-import { getSupabaseUrl } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken } from '../supabase/client';
 
 interface FacilityTableProps {
   title: string;
@@ -203,8 +203,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
   // 检查是否已提交过
   const checkExistingApplications = useCallback(async () => {
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-applications`, {
         method: 'POST',
@@ -307,8 +306,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
     setSubmitting(true);
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
 
       const applicationsToSubmit = Object.values(applications)
         .filter((app) => app.items.length > 0)
@@ -382,8 +380,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
     setSubmitting(true);
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
 
       // 调用 Edge Function 删除数据库中的申报记录
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-applications`, {

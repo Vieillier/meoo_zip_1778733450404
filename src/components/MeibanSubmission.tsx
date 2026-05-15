@@ -21,8 +21,7 @@ export default function MeibanSubmission({ userId, isPreviewMode = false }: Meib
     const loadData = async () => {
       try {
         // 先尝试从服务器加载
-        const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-        const accessToken = session.access_token;
+        const accessToken = await getAuthAccessToken();
 
         const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-meiban`, {
           method: 'POST',
@@ -84,8 +83,7 @@ export default function MeibanSubmission({ userId, isPreviewMode = false }: Meib
 
     setSaving(true);
     try {
-      const session = JSON.parse(localStorage.getItem('sb-session') || '{}');
-      const accessToken = session.access_token;
+      const accessToken = await getAuthAccessToken();
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/save-meiban`, {
         method: 'POST',
