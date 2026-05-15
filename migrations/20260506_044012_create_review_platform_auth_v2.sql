@@ -41,31 +41,14 @@ CREATE POLICY "用户可以插入自己的资料" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "管理员可以查看所有用户资料" ON public.profiles;
-CREATE POLICY "管理员可以查看所有用户资料" ON public.profiles
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+-- 管理员查看策略暂不创建，避免通过 self-select 查询 profiles 造成权限递归
 
 DROP POLICY IF EXISTS "管理员可以更新所有用户资料" ON public.profiles;
-CREATE POLICY "管理员可以更新所有用户资料" ON public.profiles
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'admin'
-    )
-  );
+-- 管理员更新策略暂不创建，避免通过 self-select 查询 profiles 造成权限递归
 
 DROP POLICY IF EXISTS "审图员可以查看展商资料" ON public.profiles;
-CREATE POLICY "审图员可以查看展商资料" ON public.profiles
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'reviewer'
-    ) AND role IN ('standard_exhibitor', 'custom_exhibitor')
-  );
+-- 审图员查看策略暂不创建，避免通过 self-select 查询 profiles 造成权限递归
+
 
 -- 创建自动处理新用户的触发器函数
 CREATE OR REPLACE FUNCTION public.handle_new_user()

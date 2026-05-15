@@ -98,13 +98,13 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         password: booth?.booth_number || p.username,
         displayName: p.display_name || p.username,
         role: p.role as UserRole,
-        phone: p.phone,
-        email: booth?.email,
-        exhibitorName: booth?.exhibitor_name,
-        hallNumber: booth?.hall_number,
-        boothNumber: booth?.booth_number,
-        boothArea: booth?.booth_area,
-        boothHeight: booth?.booth_height,
+        phone: p.phone ?? undefined,
+        email: booth?.email ?? undefined,
+        exhibitorName: booth?.exhibitor_name ?? undefined,
+        hallNumber: booth?.hall_number ?? undefined,
+        boothNumber: booth?.booth_number ?? undefined,
+        boothArea: booth?.booth_area ?? undefined,
+        boothHeight: booth?.booth_height ?? undefined,
         boothCategory: booth?.booth_category as '标摊' | '特装'
       };
     });
@@ -158,13 +158,13 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
           password: '',
           displayName: profile.display_name || profile.username,
           role: profile.role as UserRole,
-          phone: profile.phone,
-          email: booth?.email,
-          exhibitorName: booth?.exhibitor_name,
-          hallNumber: booth?.hall_number,
-          boothNumber: booth?.booth_number,
-          boothArea: booth?.booth_area,
-          boothHeight: booth?.booth_height,
+          phone: profile.phone ?? undefined,
+          email: booth?.email ?? undefined,
+          exhibitorName: booth?.exhibitor_name ?? undefined,
+          hallNumber: booth?.hall_number ?? undefined,
+          boothNumber: booth?.booth_number ?? undefined,
+          boothArea: booth?.booth_area ?? undefined,
+          boothHeight: booth?.booth_height ?? undefined,
           boothCategory: booth?.booth_category as '标摊' | '特装'
         };
         setUser(userAccount);
@@ -416,40 +416,49 @@ function ExhibitorDashboard() {
       const { data: authData, error: authError } = await supabase.auth.getUser();
 
       if (authError || !authData?.user) {
+        console.warn('Failed to get current Supabase user before loading exhibitor dashboard.', authError);
         setLoading(false);
         return;
       }
 
       const userId = authData.user.id;
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle();
+        .single();
 
-      if (profile) {
-        const { data: booth } = await supabase
-          .from('exhibitor_booths')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        setAccountData({
-          id: profile.id,
-          username: profile.username,
-          password: '',
-          displayName: profile.display_name || profile.username,
-          role: profile.role as UserRole,
-          phone: profile.phone,
-          email: booth?.email,
-          exhibitorName: booth?.exhibitor_name,
-          hallNumber: booth?.hall_number,
-          boothNumber: booth?.booth_number,
-          boothArea: booth?.booth_area,
-          boothHeight: booth?.booth_height,
-          boothCategory: booth?.booth_category as '标摊' | '特装'
+      if (profileError || !profile) {
+        console.warn('No profile record found for current logged-in user.', {
+          userId,
+          profileError,
+          expectedProfileFields: ['id', 'username', 'display_name', 'role', 'phone', 'avatar_url', 'created_at', 'updated_at']
         });
+        setLoading(false);
+        return;
       }
+
+      const { data: booth } = await supabase
+        .from('exhibitor_booths')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      setAccountData({
+        id: profile.id,
+        username: profile.username,
+        password: '',
+        displayName: profile.display_name || profile.username,
+        role: profile.role as UserRole,
+        phone: profile.phone ?? undefined,
+        email: booth?.email ?? undefined,
+        exhibitorName: booth?.exhibitor_name ?? undefined,
+        hallNumber: booth?.hall_number ?? undefined,
+        boothNumber: booth?.booth_number ?? undefined,
+        boothArea: booth?.booth_area ?? undefined,
+        boothHeight: booth?.booth_height ?? undefined,
+        boothCategory: booth?.booth_category as '标摊' | '特装'
+      });
       setLoading(false);
     };
 
@@ -1344,6 +1353,7 @@ function UserManagementPage() {
     const role: UserRole = newUser.boothCategory === '特装' ? 'custom_exhibitor' : 'standard_exhibitor';
 
     try {
+      const { supabase } = await import('./supabase/client');
       const email = `${newUser.username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
