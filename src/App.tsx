@@ -412,23 +412,26 @@ function ExhibitorDashboard() {
         return;
       }
 
-      if (!user?.username) {
+      const { supabase } = await import('./supabase/client');
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !authData?.user) {
         setLoading(false);
         return;
       }
 
-      const { supabase } = await import('./supabase/client');
+      const userId = authData.user.id;
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
-        .eq('username', user.username)
+        .eq('id', userId)
         .maybeSingle();
 
       if (profile) {
         const { data: booth } = await supabase
           .from('exhibitor_booths')
           .select('*')
-          .eq('user_id', profile.id)
+          .eq('user_id', userId)
           .maybeSingle();
 
         setAccountData({
