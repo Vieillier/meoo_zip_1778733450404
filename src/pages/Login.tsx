@@ -21,6 +21,7 @@ export default function Login() {
         email,
         password,
       });
+      console.log('[Auth] signInWithPassword result:', { authData, authError });
 
       if (authError) {
         setError('账号或密码错误');
@@ -32,12 +33,17 @@ export default function Login() {
       let sessionResult = await supabase.auth.getSession();
       let session = sessionResult.data?.session;
       let attempts = 0;
-      while (!session && attempts < 5) {
+      while ((!session || !session.user) && attempts < 10) {
         await new Promise((r) => setTimeout(r, 200));
         sessionResult = await supabase.auth.getSession();
         session = sessionResult.data?.session;
         attempts += 1;
       }
+      console.log('Session saved:', !!session, {
+        attempts,
+        sessionUser: session?.user?.id ?? null,
+        hasAccessToken: !!session?.access_token,
+      });
 
       if (!session || !session.user) {
         setError('登录后会话未能建立，请重试');

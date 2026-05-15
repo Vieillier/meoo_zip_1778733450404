@@ -66,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
+        console.log('[Auth] onAuthStateChange', event, { session: newSession });
         setSession(newSession);
         setUser(newSession?.user ?? null);
         if (newSession?.user) {
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }, 0);
         } else {
+          console.warn('[Auth] No active session on auth state change; protected routes should remain locked.');
           setProfile(null);
           setBooth(null);
           setAllBooths([]);
@@ -85,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     supabase.auth.getSession().then(async ({ data: { session: existingSession } }) => {
+      console.log('[Auth] initial getSession', { session: existingSession });
       setSession(existingSession);
       setUser(existingSession?.user ?? null);
       if (existingSession?.user) {

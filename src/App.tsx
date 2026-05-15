@@ -175,11 +175,14 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const { supabase } = await import('./supabase/client');
     const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    console.log('[Auth] signInWithPassword result:', { data, error });
 
     if (error) {
+      console.warn('[Auth] signInWithPassword returned error, preserving local fallback only when necessary.', error);
       const account = validateLogin(username, password);
       if (account) {
         setUser(account);
+        setAuthMode('local');
         return { error: null };
       }
       return { error };
@@ -189,21 +192,21 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     let sessionRes = await supabase.auth.getSession();
     let session = sessionRes.data?.session;
     let attempts = 0;
-    while (!session && attempts < 5) {
+    while ((!session || !session.user) && attempts < 10) {
       await new Promise((r) => setTimeout(r, 200));
       sessionRes = await supabase.auth.getSession();
       session = sessionRes.data?.session;
       attempts += 1;
     }
 
+    console.log('Session saved:', !!session, {
+      attempts,
+      sessionUser: session?.user?.id ?? null,
+      hasAccessToken: !!session?.access_token,
+      accessTokenType: session?.access_token ? typeof session.access_token : 'none'
+    });
+
     if (!session || !session.user) {
-      // Fall back to local validation if DB auth not available
-      const account = validateLogin(username, password);
-      if (account) {
-        setUser(account);
-        setAuthMode('local');
-        return { error: null };
-      }
       return { error: new Error('Auth session missing after sign-in') };
     }
 
