@@ -21,10 +21,6 @@ export interface AuthState {
 const VIRTUAL_EMAIL_DOMAIN = 'review.local';
 const PASSWORD_SUFFIX = '_secure';
 
-function generateVirtualEmail(username: string): string {
-  return `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@${VIRTUAL_EMAIL_DOMAIN}`;
-}
-
 export function normalizeExhibitorPassword(password: string): string {
   return password.length >= 6 ? password : `${password}${PASSWORD_SUFFIX}`;
 }
