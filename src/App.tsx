@@ -996,37 +996,50 @@ function ExcelImportModal({
     setIsSyncingAuth(true);
 
     try {
-      const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        console.error('Token未就绪，尝试刷新会话...');
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        ({ data: { session } } = await supabase.auth.getSession());
+      const { supabase } = await import('./supabase/client');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('Excel导入获取会话错误:', sessionError);
+        throw new Error('审图员登录会话校验失败，请重新登录审图员账号。');
       }
       if (!session?.access_token) {
-        throw new Error('当前身份尚未准备好，请重新登录审图员端后重试。');
+        throw new Error('审图员登录会话已过期，请重新登录审图员账号以刷新身份凭证。');
       }
 
-      const headers = await getAuthHeaders();
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      };
 
       console.log('[Import] Sending request to Edge Function...');
       console.log('[Import] Data:', JSON.stringify({ exhibitors: parsedData }, null, 2));
 
-      const response = await fetch(`${getSupabaseUrl()}/functions/v1/create-exhibitor`, {
-        method: 'POST',
+      const invokeResult = await supabase.functions.invoke('create_exhibitor', {
+        body: JSON.stringify({ exhibitors: parsedData }),
         headers,
-        body: JSON.stringify({ exhibitors: parsedData })
       });
 
-      console.log('[Import] Response status:', response.status);
-      const result = await response.json();
+      const responseStatus = (invokeResult as any).status ?? 200;
+      let result = (invokeResult as any).data;
+      if (typeof result === 'string') {
+        try {
+          result = JSON.parse(result || '{}');
+        } catch (parseError) {
+          console.warn('Unable to parse create_exhibitor response body as JSON:', parseError);
+        }
+      }
+      console.log('[Import] Response status:', responseStatus);
       console.log('[Import] Response result:', JSON.stringify(result, null, 2));
 
-      if (!response.ok) {
-        throw new Error(result.error || result.message || `HTTP ${response.status}: 导入失败`);
+      if (responseStatus >= 400) {
+        throw new Error(result?.error || result?.message || `HTTP ${responseStatus}: 导入失败`);
       }
 
-      if (result.results && result.results.errors && result.results.errors.length > 0) {
+      if (!result || !result.results) {
+        throw new Error('导入失败：未返回有效结果');
+      }
+
+      if (result.results.errors && result.results.errors.length > 0) {
         console.error('[Import] Backend errors:', result.results.errors);
         throw new Error('导入失败: ' + result.results.errors.join('; '));
       }
@@ -1477,6 +1490,14 @@ function UserManagementPage() {
       }
 
       if (authData.user) {
+        await supabase.from('profiles').upsert({
+          id: authData.user.id,
+          username: newUser.username,
+          display_name: newUser.displayName,
+          role: role,
+          phone: newUser.phone,
+        }, { onConflict: 'id' });
+
         try {
           await supabase.from('exhibitor_booths').insert({
             user_id: authData.user.id,
@@ -1492,6 +1513,38 @@ function UserManagementPage() {
           });
         } catch (boothInsertError: any) {
           console.error('Failed to insert exhibitor_booths record for new user:', boothInsertError);
+          alert('创建用户成功，但写入展位信息失败，请联系管理员。');
+          return;
+        }
+      } else {
+        // Supabase signUp 可能在某些策略下没有返回 user 对象，但用户已创建
+        const { data: profileRecord, error: profileLookupError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', newUser.username)
+          .maybeSingle();
+
+        if (!profileRecord?.id || profileLookupError) {
+          console.error('Unable to resolve new user id after signUp:', profileLookupError);
+          alert('用户已创建，但未能找到新用户记录，请联系管理员。');
+          return;
+        }
+
+        try {
+          await supabase.from('exhibitor_booths').insert({
+            user_id: profileRecord.id,
+            exhibitor_name: newUser.exhibitorName || newUser.displayName,
+            hall_number: newUser.hallNumber,
+            booth_number: newUser.boothNumber,
+            booth_area: newUser.boothArea,
+            booth_height: newUser.boothHeight,
+            booth_category: newUser.boothCategory,
+            contact_name: newUser.displayName,
+            contact_phone: newUser.phone,
+            email: newUser.email
+          });
+        } catch (boothInsertError: any) {
+          console.error('Failed to insert exhibitor_booths record for resolved new user:', boothInsertError);
           alert('创建用户成功，但写入展位信息失败，请联系管理员。');
           return;
         }

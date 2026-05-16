@@ -30,7 +30,39 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+    const authHeader = req.headers.get('authorization') || '';
+    const accessToken = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : null;
+    if (!accessToken) {
+      return new Response(JSON.stringify({ error: '未提供有效的 Authorization Bearer Token' }), {
+        status: 401,
+        headers: corsHeaders,
+      });
+    }
+
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: authInfo, error: authInfoError } = await supabaseAdmin.auth.getUser(accessToken);
+    if (authInfoError || !authInfo?.user) {
+      console.error('Authorization token validation failed:', authInfoError?.message ?? '未知错误', authHeader);
+      return new Response(JSON.stringify({ error: '无效或过期的审图员身份凭证，请重新登录审图员账号。' }), {
+        status: 401,
+        headers: corsHeaders,
+      });
+    }
+
+    const reviewerId = authInfo.user.id;
+    const { data: reviewerProfile, error: reviewerProfileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', reviewerId)
+      .maybeSingle();
+    if (reviewerProfileError || !reviewerProfile || !['reviewer', 'admin'].includes(reviewerProfile.role)) {
+      console.error('Unauthorized function caller:', { reviewerId, reviewerProfile, reviewerProfileError });
+      return new Response(JSON.stringify({ error: '当前账号无权执行此导入操作。' }), {
+        status: 403,
+        headers: corsHeaders,
+      });
+    }
 
     const body = await req.json();
     const { exhibitors } = body;
