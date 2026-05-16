@@ -996,7 +996,17 @@ function ExcelImportModal({
     setIsSyncingAuth(true);
 
     try {
-      const { getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+      const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.error('Token未就绪，尝试刷新会话...');
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        ({ data: { session } } = await supabase.auth.getSession());
+      }
+      if (!session?.access_token) {
+        throw new Error('当前身份尚未准备好，请重新登录审图员端后重试。');
+      }
+
       const headers = await getAuthHeaders();
 
       console.log('[Import] Sending request to Edge Function...');
@@ -1468,19 +1478,6 @@ function UserManagementPage() {
 
       if (authData.user) {
         try {
-          // Ensure a corresponding profile row exists for the new auth user.
-          await supabase.from('profiles').insert({
-            id: authData.user.id,
-            username: newUser.username,
-            display_name: newUser.displayName,
-            role: role,
-            phone: newUser.phone
-          });
-        } catch (profileInsertError: any) {
-          console.error('Failed to insert profile record for new user:', profileInsertError);
-        }
-
-        try {
           await supabase.from('exhibitor_booths').insert({
             user_id: authData.user.id,
             exhibitor_name: newUser.exhibitorName || newUser.displayName,
@@ -1495,6 +1492,8 @@ function UserManagementPage() {
           });
         } catch (boothInsertError: any) {
           console.error('Failed to insert exhibitor_booths record for new user:', boothInsertError);
+          alert('创建用户成功，但写入展位信息失败，请联系管理员。');
+          return;
         }
       }
 

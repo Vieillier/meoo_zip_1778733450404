@@ -40,9 +40,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 
 export async function getAuthAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
-  if (data.session?.access_token) return data.session.access_token;
-  console.warn('[Auth] No active Supabase access token available.');
-  return null;
+  return data.session?.access_token || null;
 }
 
 export async function waitForAuthAccessToken(timeoutMs = 5000, intervalMs = 200): Promise<string | null> {
@@ -56,7 +54,8 @@ export async function waitForAuthAccessToken(timeoutMs = 5000, intervalMs = 200)
 }
 
 export async function getAuthHeaders(extra: Record<string, string> = {}) {
-  const accessToken = await waitForAuthAccessToken();
+  const session = await supabase.auth.getSession();
+  const accessToken = session.data.session?.access_token || await waitForAuthAccessToken();
   if (!accessToken) {
     throw new Error('未获取到有效访问令牌，请刷新页面后重试。');
   }
