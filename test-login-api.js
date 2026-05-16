@@ -17,7 +17,7 @@ async function testLogin() {
 
   for (const account of testAccounts) {
     try {
-      const email = `${account.username.toLowerCase()}@review.local`;
+      const email = `${account.username.toLowerCase()}@test.com`;
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password: account.password

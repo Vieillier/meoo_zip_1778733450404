@@ -29,6 +29,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const VIRTUAL_EMAIL_DOMAIN = Deno.env.get('VIRTUAL_EMAIL_DOMAIN') || 'test.com';
 
     const authHeader = req.headers.get('authorization') || '';
     const accessToken = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : null;
@@ -105,7 +106,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const userEmail = `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
+        const userEmail = `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@${VIRTUAL_EMAIL_DOMAIN}`;
 
         // 检查 profiles 表中是否已存在
         const { data: existingProfiles, error: profileCheckError } = await supabaseAdmin

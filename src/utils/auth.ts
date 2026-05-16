@@ -18,7 +18,7 @@ export interface AuthState {
   profile: UserProfile | null;
 }
 
-const VIRTUAL_EMAIL_DOMAIN = 'review.local';
+const VIRTUAL_EMAIL_DOMAIN = 'test.com';
 const PASSWORD_SUFFIX = '_secure';
 
 export function normalizeExhibitorPassword(password: string): string {

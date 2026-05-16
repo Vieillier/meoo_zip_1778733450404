@@ -15,7 +15,7 @@ async function runTest() {
   try {
     // 1. 创建测试用户
     console.log('步骤1: 创建测试用户');
-    const email = `${testPhone.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
+    const email = `${testPhone.toLowerCase().replace(/[^a-z0-9]/g, '_')}@test.com`;
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password: testBoothNumber,
