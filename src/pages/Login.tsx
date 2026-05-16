@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabase/client';
 import { loginUser } from '../utils/auth';
 import { motion } from 'framer-motion';
 

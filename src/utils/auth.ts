@@ -29,6 +29,10 @@ export function normalizeExhibitorPassword(password: string): string {
   return password.length >= 6 ? password : `${password}${PASSWORD_SUFFIX}`;
 }
 
+export function generateVirtualEmail(username: string): string {
+  return `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@${VIRTUAL_EMAIL_DOMAIN}`;
+}
+
 export async function loginUser(username: string, password: string): Promise<{ session: Session | null; error: Error | null }> {
   const email = generateVirtualEmail(username);
   const normalizedPassword = normalizeExhibitorPassword(password);

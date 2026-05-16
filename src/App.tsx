@@ -18,6 +18,7 @@ import {
   importExhibitorsFromTable,
   getAccountByUsername
 } from './constants/users';
+import { normalizeExhibitorPassword, generateVirtualEmail } from './utils/auth';
 import ExhibitorDetailPage from './pages/ExhibitorDetail';
 
 interface AuthContextType {
@@ -173,8 +174,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (username: string, password: string) => {
     const { supabase } = await import('./supabase/client');
-    const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const email = generateVirtualEmail(username);
+    const normalizedPassword = normalizeExhibitorPassword(password);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: normalizedPassword });
     console.log('[Auth] signInWithPassword result:', { data, error });
 
     if (error) {
@@ -994,14 +996,8 @@ function ExcelImportModal({
     setIsSyncingAuth(true);
 
     try {
-      const { getSupabaseUrl, waitForAuthAccessToken, buildAuthHeaders } = await import('./supabase/client');
-      const accessToken = await waitForAuthAccessToken(5000, 200);
-
-      if (!accessToken) {
-        throw new Error('当前身份尚未准备好，请刷新页面或稍后重试。');
-      }
-
-      const headers = buildAuthHeaders(accessToken);
+      const { getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+      const headers = await getAuthHeaders();
 
       console.log('[Import] Sending request to Edge Function...');
       console.log('[Import] Data:', JSON.stringify({ exhibitors: parsedData }, null, 2));
@@ -1449,10 +1445,11 @@ function UserManagementPage() {
 
     try {
       const { supabase } = await import('./supabase/client');
-      const email = `${newUser.username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
+      const email = generateVirtualEmail(newUser.username);
+      const normalizedPassword = normalizeExhibitorPassword(newUser.password);
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
-        password: newUser.password,
+        password: normalizedPassword,
         options: {
           data: {
             username: newUser.username,
