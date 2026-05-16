@@ -992,18 +992,16 @@ function ExcelImportModal({
     setIsProcessing(true);
 
     try {
-      const { getSupabaseUrl, getAuthAccessToken } = await import('./supabase/client');
+      const { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } = await import('./supabase/client');
       const accessToken = await getAuthAccessToken();
+      const headers = buildAuthHeaders(accessToken);
 
       console.log('[Import] Sending request to Edge Function...');
       console.log('[Import] Data:', JSON.stringify({ exhibitors: parsedData }, null, 2));
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/create-exhibitor`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
-        },
+        headers,
         body: JSON.stringify({ exhibitors: parsedData })
       });
 
@@ -1568,16 +1566,14 @@ function UserManagementPage() {
   const handleDeleteUser = async (id: string) => {
     if (!confirm('确定要删除此用户吗?')) return;
 
-    const { supabase, getSupabaseUrl, getAuthAccessToken } = await import('./supabase/client');
+    const { supabase, getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } = await import('./supabase/client');
     const accessToken = await getAuthAccessToken();
+    const headers = buildAuthHeaders(accessToken);
 
     try {
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-user`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
-        },
+        headers,
         body: JSON.stringify({ userId: id })
       });
 

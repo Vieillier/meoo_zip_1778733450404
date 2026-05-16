@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSupabaseUrl, getAuthAccessToken, supabase } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders, supabase } from '../supabase/client';
 import PaymentNoticeModal from './PaymentNoticeModal';
 
 interface ApplicationItem {
@@ -135,13 +135,22 @@ export default function ApplicationOverview() {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      const accessToken = await getAuthAccessToken();
+      let accessToken = await getAuthAccessToken();
+      let retries = 0;
+      while (!accessToken && retries < 10) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        accessToken = await getAuthAccessToken();
+        retries += 1;
+      }
+      if (!accessToken) {
+        console.warn('[Auth] No access token available when fetching applications; aborting until session is valid.');
+        setLoading(false);
+        return;
+      }
+      const headers = buildAuthHeaders(accessToken);
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-applications`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
-        },
+        headers,
         body: JSON.stringify({ filters })
       });
       if (!response.ok) throw new Error('Failed to fetch applications');
@@ -239,10 +248,7 @@ export default function ApplicationOverview() {
       const accessToken = await getAuthAccessToken();
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-invoice-info`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
-        },
+        headers: buildAuthHeaders(accessToken),
         body: JSON.stringify({ boothId: booth.booth_id, boothNumber: booth.booth_number })
       });
       if (!response.ok) throw new Error('Failed to fetch invoice info');

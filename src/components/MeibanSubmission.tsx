@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { getSupabaseUrl, getAuthAccessToken } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } from '../supabase/client';
 
 interface MeibanSubmissionProps {
   userId: string;
@@ -27,10 +27,7 @@ export default function MeibanSubmission({ userId, isPreviewMode = false }: Meib
 
         const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-meiban`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: accessToken ? `Bearer ${accessToken}` : '',
-          },
+          headers: buildAuthHeaders(accessToken),
           body: JSON.stringify({ userId }),
         });
 
@@ -89,10 +86,7 @@ export default function MeibanSubmission({ userId, isPreviewMode = false }: Meib
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/save-meiban`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: accessToken ? `Bearer ${accessToken}` : '',
-        },
+        headers: buildAuthHeaders(accessToken),
         body: JSON.stringify({
           userId,
           companyNameCn: companyNameCn.trim(),

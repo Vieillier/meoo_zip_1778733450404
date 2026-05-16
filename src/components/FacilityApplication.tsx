@@ -10,7 +10,7 @@ import {
   ApplicationItem,
   ApplicationData,
 } from '../constants/facilityData';
-import { getSupabaseUrl, getAuthAccessToken } from '../supabase/client';
+import { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } from '../supabase/client';
 
 interface FacilityTableProps {
   title: string;
@@ -207,10 +207,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-applications`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
-        },
+        headers: buildAuthHeaders(accessToken),
         body: JSON.stringify({
           filters: { showOnlyApplications: true }
         })
@@ -330,10 +327,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
         const response = await fetch(`${getSupabaseUrl()}/functions/v1/submit-application`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: accessToken ? `Bearer ${accessToken}` : '',
-          },
+          headers: buildAuthHeaders(accessToken),
           body: JSON.stringify({
             applications: emptySubmit,
             userId,
@@ -347,10 +341,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
       } else {
         const response = await fetch(`${getSupabaseUrl()}/functions/v1/submit-application`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: accessToken ? `Bearer ${accessToken}` : '',
-          },
+          headers: buildAuthHeaders(accessToken),
           body: JSON.stringify({
             applications: applicationsToSubmit,
             userId,
@@ -389,10 +380,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
       // 调用 Edge Function 删除数据库中的申报记录
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-applications`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: accessToken ? `Bearer ${accessToken}` : '',
-        },
+        headers: buildAuthHeaders(accessToken),
         body: JSON.stringify({ userId }),
       });
 

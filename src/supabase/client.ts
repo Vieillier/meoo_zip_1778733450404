@@ -40,5 +40,16 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 
 export async function getAuthAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  if (data.session?.access_token) return data.session.access_token;
+  console.warn('[Auth] No active Supabase access token available.');
+  return null;
+}
+
+export function buildAuthHeaders(accessToken: string | null, extra: Record<string, string> = {}) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extra,
+  };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  return headers;
 }

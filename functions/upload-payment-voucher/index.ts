@@ -1,20 +1,25 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    });
-  }
-
+  const allowedOrigins = ['https://drawextestone.netlify.app'];
+  const origin = req.headers.get('origin');
+  const corsOrigin = origin && allowedOrigins.includes(origin) ? origin : '*';
   const corsHeaders = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': corsOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': corsOrigin !== '*' ? 'true' : 'false',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
