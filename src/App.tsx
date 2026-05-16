@@ -817,6 +817,7 @@ function ExcelImportModal({
   const { importUsers, accounts } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncingAuth, setIsSyncingAuth] = useState(false);
   const [stage, setStage] = useState<'upload' | 'preview'>('upload');
   const [parsedData, setParsedData] = useState<PreviewAccount[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
@@ -990,10 +991,16 @@ function ExcelImportModal({
     if (parsedData.length === 0) return;
 
     setIsProcessing(true);
+    setIsSyncingAuth(true);
 
     try {
-      const { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } = await import('./supabase/client');
-      const accessToken = await getAuthAccessToken();
+      const { getSupabaseUrl, waitForAuthAccessToken, buildAuthHeaders } = await import('./supabase/client');
+      const accessToken = await waitForAuthAccessToken(5000, 200);
+
+      if (!accessToken) {
+        throw new Error('当前身份尚未准备好，请刷新页面或稍后重试。');
+      }
+
       const headers = buildAuthHeaders(accessToken);
 
       console.log('[Import] Sending request to Edge Function...');
@@ -1031,6 +1038,7 @@ function ExcelImportModal({
       importUsers(importData);
 
       setIsProcessing(false);
+      setIsSyncingAuth(false);
 
       let message = '';
       if (result.results.added > 0) {
@@ -1048,6 +1056,7 @@ function ExcelImportModal({
       onClose();
     } catch (error: any) {
       setIsProcessing(false);
+      setIsSyncingAuth(false);
       alert('导入失败: ' + error.message);
     }
   };
@@ -1274,11 +1283,16 @@ function ExcelImportModal({
                 </table>
               </div>
 
+              {isSyncingAuth && (
+                <div className="mb-3 text-sm text-yellow-700 bg-yellow-100 rounded-lg px-3 py-2">
+                  正在同步身份，请稍候再点击“一键激活并导入”。
+                </div>
+              )}
               <div className="flex gap-4">
                 <button
                   type="button"
                   onClick={handleActivate}
-                  disabled={isProcessing || parsedData.length === 0}
+                  disabled={isProcessing || isSyncingAuth || parsedData.length === 0}
                   className="flex-1 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
                 >
                   <i className="fas fa-check-circle"></i>

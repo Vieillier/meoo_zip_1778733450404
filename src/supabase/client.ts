@@ -45,6 +45,16 @@ export async function getAuthAccessToken(): Promise<string | null> {
   return null;
 }
 
+export async function waitForAuthAccessToken(timeoutMs = 5000, intervalMs = 200): Promise<string | null> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const token = await getAuthAccessToken();
+    if (token) return token;
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  return null;
+}
+
 export function buildAuthHeaders(accessToken: string | null, extra: Record<string, string> = {}) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

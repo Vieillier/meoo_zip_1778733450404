@@ -48,17 +48,18 @@ Deno.serve(async (req) => {
       try {
         const username = String(item.username || '');
         const password = String(item.password || '');
+        const contactPhone = String(item.contactPhone || item.phone || '');
         const displayName = String(item.displayName || item.exhibitorName || '展商');
-        const exhibitorName = String(item.exhibitorName || displayName);
-        const hallNumber = String(item.hallNumber || '');
-        const boothNumber = String(item.boothNumber || '');
-        const boothArea = Number(item.boothArea) || 9;
-        const boothHeight = Number(item.boothHeight) || 4;
-        const boothCategory = item.boothCategory === '特装' ? '特装' : '标摊';
-        const role = boothCategory === '特装' ? 'custom_exhibitor' : 'standard_exhibitor';
-        const phone = String(item.phone || username);
-        const email = String(item.email || '');
-        const contactName = String(item.contactName || displayName);
+        const exhibitorName = String(item.exhibitorName || item.exhibitor_name || displayName);
+        const contactName = String(item.contactName || item.contact_name || displayName);
+        const hallNumber = String(item.hallNumber || item.hall_number || '');
+        const boothNumber = String(item.boothNumber || item.booth_number || '');
+        const boothArea = Number(item.boothArea ?? item.booth_area) || 9;
+        const boothHeight = Number(item.boothHeight ?? item.booth_height) || 4;
+        const boothCategory = String(item.boothCategory || item.booth_category || (boothHeight > 4 ? '特装' : '标摊'));
+        const role = item.role === 'custom_exhibitor' ? 'custom_exhibitor' : boothCategory === '特装' ? 'custom_exhibitor' : 'standard_exhibitor';
+        const phone = contactPhone || username;
+        const email = String(item.email || item.contactEmail || item.contact_email || '');
 
         if (!username || !password) {
           results.errors.push(`跳过: 用户名或密码为空`);
@@ -94,7 +95,20 @@ Deno.serve(async (req) => {
             results.errors.push(`更新密码失败: ${username} - ${updateAuthError.message}`);
           }
 
-          // 更新展位信息
+          const { error: profileUpdateError } = await supabaseAdmin
+            .from('profiles')
+            .update({
+              username,
+              display_name: displayName,
+              role,
+              phone,
+            })
+            .eq('id', userId);
+
+          if (profileUpdateError) {
+            results.errors.push(`更新用户资料失败: ${username} - ${profileUpdateError.message}`);
+          }
+
           const { error: boothError } = await supabaseAdmin
             .from('exhibitor_booths')
             .upsert({
