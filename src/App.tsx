@@ -1011,11 +1011,18 @@ function ExcelImportModal({
         Authorization: `Bearer ${session.access_token}`,
       };
 
+      // Ensure each record has a consistent virtual email and explicit password field
+      const payloadExhibitors = parsedData.map(item => ({
+        ...item,
+        email: item.email || generateVirtualEmail(String(item.username || item.contactPhone || '')),
+        password: item.password || item.boothNumber || '',
+      }));
+
       console.log('[Import] Sending request to Edge Function...');
-      console.log('[Import] Data:', JSON.stringify({ exhibitors: parsedData }, null, 2));
+      console.log('[Import] Payload:', JSON.stringify({ exhibitors: payloadExhibitors }, null, 2));
 
       const invokeResult = await supabase.functions.invoke('create_exhibitor', {
-        body: JSON.stringify({ exhibitors: parsedData }),
+        body: JSON.stringify({ exhibitors: payloadExhibitors }),
         headers,
       });
 

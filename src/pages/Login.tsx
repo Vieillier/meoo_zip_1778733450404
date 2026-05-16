@@ -18,10 +18,12 @@ export default function Login() {
 
     try {
       const { session: authSession, error: authError } = await loginUser(username, password);
-      console.log('[Auth] signInWithPassword result:', { session: authSession, authError });
+      const email = (username.toLowerCase().replace(/[^a-z0-9]/g, '_') || '') + '@test.com';
+      console.log('[Auth] Login attempt:', { username, email, passwordLen: password.length, authError });
 
       if (authError) {
-        setError('账号或密码错误');
+        console.error('[Auth] signInWithPassword failed:', authError);
+        setError('登录失败：账号或密码错误，或邮箱尚未迁移至@test.com（请联系管理员）');
         setLoading(false);
         return;
       }
