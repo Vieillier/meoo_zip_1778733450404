@@ -1,5 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const PASSWORD_SUFFIX = '_secure';
+function normalizeExhibitorPassword(password: string): string {
+  return password.length >= 6 ? password : `${password}${PASSWORD_SUFFIX}`;
+}
+
 Deno.serve(async (req) => {
   const allowedOrigins = ['https://drawextestone.netlify.app'];
   const origin = req.headers.get('origin');
@@ -46,9 +51,10 @@ Deno.serve(async (req) => {
 
     for (const item of exhibitors) {
       try {
-        const username = String(item.username || '');
-        const password = String(item.password || '');
-        const contactPhone = String(item.contactPhone || item.phone || '');
+        const contactPhone = String(item.contactPhone || item.phone || item.username || '');
+        const username = contactPhone || String(item.username || '');
+        const password = String(item.password || item.boothNumber || item.booth_number || '');
+        const normalizedPassword = normalizeExhibitorPassword(password);
         const displayName = String(item.displayName || item.exhibitorName || '展商');
         const exhibitorName = String(item.exhibitorName || item.exhibitor_name || displayName);
         const contactName = String(item.contactName || item.contact_name || displayName);
@@ -88,7 +94,7 @@ Deno.serve(async (req) => {
           // 更新用户密码（保持原始密码）
           const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
             userId,
-            { password: password }
+            { password: normalizedPassword }
           );
 
           if (updateAuthError) {
@@ -191,7 +197,7 @@ Deno.serve(async (req) => {
         // 创建新用户 - 使用原始密码
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
           email: userEmail,
-          password: password,
+          password: normalizedPassword,
           email_confirm: true,
           user_metadata: {
             username: username,

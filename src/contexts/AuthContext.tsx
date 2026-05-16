@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { supabase } from '../supabase/client';
+import { loginUser } from '../utils/auth';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Tables } from '../supabase/types';
 
@@ -103,8 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string) => {
-    const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await loginUser(username, password);
     return { error };
   };
 

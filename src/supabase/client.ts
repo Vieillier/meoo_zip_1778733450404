@@ -55,6 +55,14 @@ export async function waitForAuthAccessToken(timeoutMs = 5000, intervalMs = 200)
   return null;
 }
 
+export async function getAuthHeaders(extra: Record<string, string> = {}) {
+  const accessToken = await waitForAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('未获取到有效访问令牌，请刷新页面后重试。');
+  }
+  return buildAuthHeaders(accessToken, extra);
+}
+
 export function buildAuthHeaders(accessToken: string | null, extra: Record<string, string> = {}) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

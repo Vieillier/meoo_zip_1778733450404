@@ -1580,9 +1580,8 @@ function UserManagementPage() {
   const handleDeleteUser = async (id: string) => {
     if (!confirm('确定要删除此用户吗?')) return;
 
-    const { supabase, getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } = await import('./supabase/client');
-    const accessToken = await getAuthAccessToken();
-    const headers = buildAuthHeaders(accessToken);
+    const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+    const headers = await getAuthHeaders();
 
     try {
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-user`, {

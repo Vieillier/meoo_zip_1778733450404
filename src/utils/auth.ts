@@ -18,15 +18,23 @@ export interface AuthState {
   profile: UserProfile | null;
 }
 
+const VIRTUAL_EMAIL_DOMAIN = 'review.local';
+const PASSWORD_SUFFIX = '_secure';
+
 function generateVirtualEmail(username: string): string {
-  return `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
+  return `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@${VIRTUAL_EMAIL_DOMAIN}`;
+}
+
+export function normalizeExhibitorPassword(password: string): string {
+  return password.length >= 6 ? password : `${password}${PASSWORD_SUFFIX}`;
 }
 
 export async function loginUser(username: string, password: string): Promise<{ session: Session | null; error: Error | null }> {
   const email = generateVirtualEmail(username);
+  const normalizedPassword = normalizeExhibitorPassword(password);
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
-    password,
+    password: normalizedPassword,
   });
   return { session: data?.session || null, error };
 }

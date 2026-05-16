@@ -10,7 +10,7 @@ import {
   ApplicationItem,
   ApplicationData,
 } from '../constants/facilityData';
-import { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders } from '../supabase/client';
+import { getSupabaseUrl, getAuthHeaders } from '../supabase/client';
 
 interface FacilityTableProps {
   title: string;
@@ -203,11 +203,11 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
   // 检查是否已提交过
   const checkExistingApplications = useCallback(async () => {
     try {
-      const accessToken = await getAuthAccessToken();
+      const headers = await getAuthHeaders();
 
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-applications`, {
         method: 'POST',
-        headers: buildAuthHeaders(accessToken),
+        headers,
         body: JSON.stringify({
           filters: { showOnlyApplications: true }
         })
@@ -307,7 +307,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
     setSubmitting(true);
     try {
-      const accessToken = await getAuthAccessToken();
+      const headers = await getAuthHeaders();
 
       const applicationsToSubmit = Object.values(applications)
         .filter((app) => app.items.length > 0)
@@ -327,7 +327,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
         const response = await fetch(`${getSupabaseUrl()}/functions/v1/submit-application`, {
           method: 'POST',
-          headers: buildAuthHeaders(accessToken),
+          headers,
           body: JSON.stringify({
             applications: emptySubmit,
             userId,
@@ -341,7 +341,7 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
       } else {
         const response = await fetch(`${getSupabaseUrl()}/functions/v1/submit-application`, {
           method: 'POST',
-          headers: buildAuthHeaders(accessToken),
+          headers,
           body: JSON.stringify({
             applications: applicationsToSubmit,
             userId,
@@ -375,12 +375,12 @@ export default function FacilityApplication({ userId, exhibitorName, hallNumber,
 
     setSubmitting(true);
     try {
-      const accessToken = await getAuthAccessToken();
+      const headers = await getAuthHeaders();
 
       // 调用 Edge Function 删除数据库中的申报记录
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-applications`, {
         method: 'POST',
-        headers: buildAuthHeaders(accessToken),
+        headers,
         body: JSON.stringify({ userId }),
       });
 

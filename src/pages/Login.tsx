@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabase/client';
+import { loginUser } from '../utils/auth';
 import { motion } from 'framer-motion';
 
 export default function Login() {
@@ -16,12 +16,8 @@ export default function Login() {
     setError('');
 
     try {
-      const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}@review.local`;
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      console.log('[Auth] signInWithPassword result:', { authData, authError });
+      const { session: authSession, error: authError } = await loginUser(username, password);
+      console.log('[Auth] signInWithPassword result:', { session: authSession, authError });
 
       if (authError) {
         setError('账号或密码错误');

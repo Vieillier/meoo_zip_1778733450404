@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSupabaseUrl, getAuthAccessToken, buildAuthHeaders, supabase } from '../supabase/client';
+import { getSupabaseUrl, getAuthHeaders, supabase } from '../supabase/client';
 import PaymentNoticeModal from './PaymentNoticeModal';
 
 interface ApplicationItem {
@@ -135,19 +135,7 @@ export default function ApplicationOverview() {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      let accessToken = await getAuthAccessToken();
-      let retries = 0;
-      while (!accessToken && retries < 10) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        accessToken = await getAuthAccessToken();
-        retries += 1;
-      }
-      if (!accessToken) {
-        console.warn('[Auth] No access token available when fetching applications; aborting until session is valid.');
-        setLoading(false);
-        return;
-      }
-      const headers = buildAuthHeaders(accessToken);
+      const headers = await getAuthHeaders();
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-applications`, {
         method: 'POST',
         headers,
@@ -245,10 +233,10 @@ export default function ApplicationOverview() {
     setLoadingInvoice(true);
     setShowInvoiceModal(true);
     try {
-      const accessToken = await getAuthAccessToken();
+      const headers = await getAuthHeaders();
       const response = await fetch(`${getSupabaseUrl()}/functions/v1/get-invoice-info`, {
         method: 'POST',
-        headers: buildAuthHeaders(accessToken),
+        headers,
         body: JSON.stringify({ boothId: booth.booth_id, boothNumber: booth.booth_number })
       });
       if (!response.ok) throw new Error('Failed to fetch invoice info');
