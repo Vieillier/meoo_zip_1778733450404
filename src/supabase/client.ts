@@ -72,82 +72,96 @@ export function buildAuthHeaders(accessToken: string | null, extra: Record<strin
 }
 
 /**
- * 强制刷新并验证访问令牌，确保Token有效且未过期
+ * 直接获取并验证当前访问令牌
+ * 不依赖refreshSession()，直接使用localStorage中的会话
  * 用于关键操作（如数据导入）前的Token验证
  * @returns 返回有效的访问令牌或null（表示需要重新登录）
  */
-export async function refreshAndValidateToken(): Promise<string | null> {
+export async function getValidAccessToken(): Promise<string | null> {
   try {
-    console.log('[TokenValidation] 开始刷新Token...');
+    console.log('[TokenValidation] 步骤1: 获取当前会话...');
     
-    // Step 1: 尝试刷新Token
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    
-    if (refreshError) {
-      console.warn('[TokenValidation] Token刷新返回错误:', refreshError.message);
-      // 如果刷新失败，继续尝试使用现有Token
-    } else if (refreshData?.session) {
-      console.log('[TokenValidation] Token已成功刷新');
-    }
-
-    // Step 2: 获取当前会话
+    // 直接从localStorage获取会话，不尝试刷新
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
     if (sessionError) {
-      console.error('[TokenValidation] 获取会话失败:', sessionError.message);
+      console.error('[TokenValidation] getSession错误:', sessionError.message);
       return null;
     }
 
-    if (!session?.access_token) {
-      console.error('[TokenValidation] 会话不存在或Access Token为空');
+    if (!session) {
+      console.error('[TokenValidation] 会话不存在 - 用户需要重新登录');
+      console.warn('[TokenValidation] localStorage可能已被清除或会话已过期');
       return null;
     }
 
-    // Step 3: 验证Token是否过期
-    if (session.expires_at) {
-      const expiresAtMs = session.expires_at * 1000;
-      const nowMs = Date.now();
-      const timeUntilExpiry = expiresAtMs - nowMs;
-      
-      console.log('[TokenValidation] Token过期时间:', new Date(expiresAtMs).toISOString());
-      console.log('[TokenValidation] 当前时间:', new Date(nowMs).toISOString());
-      console.log('[TokenValidation] 距离过期还有:', Math.floor(timeUntilExpiry / 1000), '秒');
-      
-      // 如果Token即将在5分钟内过期，尝试刷新
-      if (timeUntilExpiry < 5 * 60 * 1000) {
-        console.log('[TokenValidation] Token即将过期，强制刷新...');
-        const { data: forceRefreshData, error: forceRefreshError } = await supabase.auth.refreshSession();
-        
-        if (forceRefreshError || !forceRefreshData?.session?.access_token) {
-          console.error('[TokenValidation] 强制刷新Token失败');
-          return null;
-        }
-        
-        console.log('[TokenValidation] Token强制刷新成功');
-        return forceRefreshData.session.access_token;
-      }
-      
-      // 如果Token已经过期
-      if (expiresAtMs <= nowMs) {
-        console.error('[TokenValidation] Token已过期');
-        return null;
-      }
+    if (!session.access_token) {
+      console.error('[TokenValidation] Access Token为空');
+      return null;
     }
 
-    console.log('[TokenValidation] Token验证成功，Token长度:', session.access_token.length);
+    // 检查Token是否过期
+    const expiresAtMs = (session.expires_at || 0) * 1000;
+    const nowMs = Date.now();
+    
+    console.log('[TokenValidation] 步骤2: 验证Token过期时间');
+    console.log('[TokenValidation] Token过期时间 (ms):', expiresAtMs);
+    console.log('[TokenValidation] 当前时间 (ms):', nowMs);
+    console.log('[TokenValidation] Token过期日期:', new Date(expiresAtMs).toISOString());
+    console.log('[TokenValidation] 当前日期:', new Date(nowMs).toISOString());
+
+    if (expiresAtMs <= nowMs) {
+      console.error('[TokenValidation] Token已过期');
+      console.log('[TokenValidation] 已过期', Math.floor((nowMs - expiresAtMs) / 1000), '秒');
+      return null;
+    }
+
+    const timeUntilExpiry = expiresAtMs - nowMs;
+    console.log('[TokenValidation] 步骤3: Token有效 - 距离过期还有', Math.floor(timeUntilExpiry / 1000), '秒');
+    console.log('[TokenValidation] Access Token长度:', session.access_token.length);
+    console.log('[TokenValidation] Token验证成功！返回有效Token');
+    
     return session.access_token;
   } catch (error: any) {
-    console.error('[TokenValidation] 验证过程中发生异常:', error);
+    console.error('[TokenValidation] 验证过程异常:', error);
     return null;
   }
 }
 
 /**
- * 获取有效的Token，必要时刷新，失败时抛出错误
+ * 强制刷新Token（如果可能）并验证
+ * 注意：此函数可能因为refresh_token缺失而失败，应作为可选步骤
+ * @returns 返回有效的访问令牌或null
+ */
+export async function refreshAndValidateToken(): Promise<string | null> {
+  try {
+    console.log('[TokenValidation] 尝试刷新Token...');
+    
+    // 尝试刷新Token，但不要因为失败而放弃
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    
+    if (refreshError) {
+      console.warn('[TokenValidation] Token刷新失败 - 这是正常的，将使用当前会话:', refreshError.message);
+      // 继续使用当前会话，不中止流程
+    } else if (refreshData?.session) {
+      console.log('[TokenValidation] Token已成功刷新');
+    }
+
+    // 获取当前有效的Token（刷新成功则是新Token，失败则是原Token）
+    return await getValidAccessToken();
+  } catch (error: any) {
+    console.error('[TokenValidation] 刷新过程异常，回退到获取当前Token:', error);
+    // 如果刷新失败，尝试直接获取当前Token
+    return await getValidAccessToken();
+  }
+}
+
+/**
+ * 获取有效的Token，失败时抛出错误
  * 用于关键操作
  */
 export async function getValidToken(): Promise<string> {
-  const token = await refreshAndValidateToken();
+  const token = await getValidAccessToken();
   if (!token) {
     throw new Error('无法获取有效的身份凭证，请重新登录审图员账号。');
   }
