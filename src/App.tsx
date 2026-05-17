@@ -996,20 +996,28 @@ function ExcelImportModal({
     setIsSyncingAuth(true);
 
     try {
-      const { supabase } = await import('./supabase/client');
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Excel导入获取会话错误:', sessionError);
-        throw new Error('审图员登录会话校验失败，请重新登录审图员账号。');
-      }
-      if (!session?.access_token) {
-        throw new Error('审图员登录会话已过期，请重新登录审图员账号以刷新身份凭证。');
+      const { supabase, refreshAndValidateToken } = await import('./supabase/client');
+      
+      // Step 1: 验证并获取有效的Token（此函数会自动处理刷新）
+      console.log('[Import] 开始验证和刷新Token...');
+      let accessToken: string | null;
+      try {
+        accessToken = await refreshAndValidateToken();
+        if (!accessToken) {
+          throw new Error('获取有效Token失败');
+        }
+      } catch (tokenError: any) {
+        console.error('[Import] Token验证失败:', tokenError);
+        throw new Error('您的身份凭证已过期或无效，请重新登录审图员账号。');
       }
 
+      console.log('[Import] Token验证成功，准备发送请求');
+      
       const headers = {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${accessToken}`,
       };
+      console.log('[Import] 认证头已设置，Token长度:', accessToken.length);
 
       // Ensure each record has a consistent virtual email and explicit password field
       const payloadExhibitors = parsedData.map(item => ({
@@ -1018,13 +1026,41 @@ function ExcelImportModal({
         password: item.password || item.boothNumber || '',
       }));
 
-      console.log('[Import] Sending request to Edge Function...');
-      console.log('[Import] Payload:', JSON.stringify({ exhibitors: payloadExhibitors }, null, 2));
+      console.log('[Import] 开始发送请求到云函数...');
+      console.log('[Import] 发送数据:', JSON.stringify({ exhibitors: payloadExhibitors }, null, 2));
+      console.log('[Import] 请求头:', { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken?.substring(0, 20)}...` });
 
-      const invokeResult = await supabase.functions.invoke('create_exhibitor', {
-        body: JSON.stringify({ exhibitors: payloadExhibitors }),
-        headers,
-      });
+      let invokeResult: any;
+      try {
+        invokeResult = await supabase.functions.invoke('create_exhibitor', {
+          body: JSON.stringify({ exhibitors: payloadExhibitors }),
+          headers,
+        });
+      } catch (invokeError: any) {
+        console.error('[Import] 云函数调用异常:', invokeError);
+        // 如果是网络错误，尝试重新刷新Token并重试
+        if (invokeError?.message?.includes('session') || invokeError?.message?.includes('token') || invokeError?.status === 401) {
+          console.warn('[Import] 检测到认证相关错误，尝试重新刷新Token...');
+          const { data: retryRefreshData, error: retryRefreshError } = await supabase.auth.refreshSession();
+          if (retryRefreshError || !retryRefreshData?.session?.access_token) {
+            throw new Error('身份凭证已过期，请重新登录审图员账号。');
+          }
+          
+          // 使用新的Token重试一次
+          const newSession = retryRefreshData.session;
+          const retryHeaders = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${newSession.access_token}`,
+          };
+          console.log('[Import] 使用刷新后的Token重试请求...');
+          invokeResult = await supabase.functions.invoke('create_exhibitor', {
+            body: JSON.stringify({ exhibitors: payloadExhibitors }),
+            headers: retryHeaders,
+          });
+        } else {
+          throw invokeError;
+        }
+      }
 
       const responseStatus = (invokeResult as any).status ?? 200;
       let result = (invokeResult as any).data;
@@ -1032,14 +1068,22 @@ function ExcelImportModal({
         try {
           result = JSON.parse(result || '{}');
         } catch (parseError) {
-          console.warn('Unable to parse create_exhibitor response body as JSON:', parseError);
+          console.warn('[Import] 无法解析create_exhibitor响应体为JSON:', parseError);
         }
       }
-      console.log('[Import] Response status:', responseStatus);
-      console.log('[Import] Response result:', JSON.stringify(result, null, 2));
+      console.log('[Import] 响应状态码:', responseStatus);
+      console.log('[Import] 响应结果:', JSON.stringify(result, null, 2));
 
       if (responseStatus >= 400) {
-        throw new Error(result?.error || result?.message || `HTTP ${responseStatus}: 导入失败`);
+        const errorMsg = result?.error || result?.message || `HTTP ${responseStatus}: 导入失败`;
+        console.error('[Import] 服务器返回错误:', errorMsg);
+        
+        // 特殊处理401未认证错误
+        if (responseStatus === 401) {
+          throw new Error('您的身份凭证在服务器端验证失败，请重新登录审图员账号。');
+        }
+        
+        throw new Error(errorMsg);
       }
 
       if (!result || !result.results) {
@@ -1083,7 +1127,28 @@ function ExcelImportModal({
     } catch (error: any) {
       setIsProcessing(false);
       setIsSyncingAuth(false);
-      alert('导入失败: ' + error.message);
+      
+      // 详细的错误日志
+      console.error('[Import] 导入过程中发生错误:');
+      console.error('[Import] 错误类型:', error?.constructor?.name);
+      console.error('[Import] 错误消息:', error?.message);
+      console.error('[Import] 错误详情:', error);
+      console.error('[Import] 错误堆栈:', error?.stack);
+      
+      // 针对不同错误提供更友好的提示
+      let userMessage = error?.message || '导入失败，请稍后重试';
+      
+      // 检查是否为认证相关错误
+      if (error?.message?.includes('会话已过期') || error?.message?.includes('身份凭证已过期') || error?.message?.includes('验证失败')) {
+        userMessage += '\n\n请在页面上方点击"重新登录"以刷新您的身份凭证。';
+      }
+      
+      alert('导入失败: ' + userMessage);
+      
+      // 如果是认证错误，可能需要强制用户重新登录
+      if (error?.message?.includes('会话已过期') || error?.message?.includes('身份凭证已过期')) {
+        console.log('[Import] 检测到认证错误，建议用户重新登录');
+      }
     }
   };
 
