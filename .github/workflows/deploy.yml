@@ -25,32 +25,33 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4 # 升级到 v4
+        uses: pnpm/action-setup@v4
         with:
-          version: 9 # 升级到符合新环境的 pnpm 9
+          version: 9
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24 # 完美对齐 GitHub 的新要求
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install
 
       - name: Build project
+        # 🔒 核心修复：在这里精准、安全地注入你在 GitHub 网页后台配好的两个加密变量
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm build
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5 # 升级到 v5
+        uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist' 
+          path: './dist'
 
       - name: Deploy to GitHub Pages
         id: deployment
