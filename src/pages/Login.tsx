@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase/client';
-import { loginUser } from '../utils/auth';
 import { motion } from 'framer-motion';
 
 export default function Login() {
@@ -17,42 +16,27 @@ export default function Login() {
     setError('');
 
     try {
-      // Step 1: 包装账号密码
-      console.log('[Auth] ==========================================');
-      console.log('[Auth] 开始登录流程');
-      console.log('[Auth] 第1步: 包装账号密码');
-      console.log('[Auth] 原始输入 - 账号:', username, '密码长度:', password.length);
-      
-      // 手动执行包装逻辑，以便清晰诊断
-      const email = username.toLowerCase().replace(/[^a-z0-9]/g, '_') + '@test.com';
-      const PASSWORD_SUFFIX = '_secure';
-      const normalizedPassword = password.length >= 6 ? password : `${password}${PASSWORD_SUFFIX}`;
-      
-      console.log('[Auth] 包装后 - 邮箱:', email);
-      console.log('[Auth] 包装后 - 密码长度:', normalizedPassword.length, '(原始:', password.length, ')');
-      console.log('[Auth] 密码是否添加后缀:', normalizedPassword !== password ? 'YES' : 'NO');
+      let targetEmail = username;
+      let targetPassword = password;
 
-      // Step 2: 调用Supabase登录
-      console.log('[Auth] 第2步: 调用Supabase signInWithPassword');
+      if (!username.includes('@')) {
+        targetEmail = `${username}@test.com`;
+        targetPassword = `${password}_secure`;
+      }
+
+      console.log('[Auth] 正在向 Supabase 发起线上验证:', targetEmail);
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password: normalizedPassword,
+        email: targetEmail,
+        password: targetPassword,
       });
-      
-      console.log('[Auth] Supabase响应 - error:', signInError?.message);
-      console.log('[Auth] Supabase响应 - session:', !!data?.session);
-      console.log('[Auth] Supabase响应 - user:', !!data?.user);
 
       if (signInError) {
         console.error('[Auth] ✗ signInWithPassword失败:', signInError);
-        
-        // 诊断可能的问题
         if (signInError.message.includes('Invalid login credentials')) {
           console.error('[Auth] 诊断: 账号或密码错误，或该账户不存在');
         } else if (signInError.message.includes('400')) {
           console.error('[Auth] 诊断: 请求参数有问题，检查邮箱或密码格式');
         }
-        
         setError(`登录失败: ${signInError.message}`);
         setLoading(false);
         return;

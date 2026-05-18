@@ -12,6 +12,7 @@ import {
 } from './constants/users';
 import { normalizeExhibitorPassword, generateVirtualEmail } from './utils/auth';
 import ExhibitorDetailPage from './pages/ExhibitorDetail';
+import Login from './pages/Login';
 
 interface AuthContextType {
   user: UserAccount | null;
@@ -165,95 +166,34 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (username: string, password: string) => {
-    const { supabase } = await import('./supabase/client');
-    const email = generateVirtualEmail(username);
-    const normalizedPassword = normalizeExhibitorPassword(password);
-    
-    console.log('[Auth] ==========================================');
-    console.log('[Auth] 登录流程开始');
-    console.log('[Auth] 原始账号:', username);
-    console.log('[Auth] 包装后邮箱:', email);
-    console.log('[Auth] 密码是否添加后缀:', normalizedPassword !== password);
-    
-    // CRITICAL: 不再有本地fallback。如果Supabase失败，直接返回错误。
-    const { data, error } = await supabase.auth.signInWithPassword({ 
-      email, 
-      password: normalizedPassword 
-    });
-    
-    console.log('[Auth] signInWithPassword响应 - error:', error?.message);
-    console.log('[Auth] signInWithPassword响应 - session:', !!data?.session);
+    try {
+      const { supabase } = await import('./supabase/client');
+      
+      // 1. 重新加回自动包装逻辑
+      let targetEmail = username;
+      let targetPassword = password;
 
-    if (error) {
-      console.error('[Auth] ✗ Supabase认证失败，不使用本地fallback');
-      console.error('[Auth] 错误信息:', error.message);
-      // 不再调用validateLogin()！这会导致本地fallback
-      return { error };
+      // 如果账号不包含 @ 符号（说明输入的是纯数字手机号/账号），就自动补齐
+      if (!username.includes('@')) {
+        targetEmail = `${username}@test.com`;
+        targetPassword = `${password}_secure`;
+      }
+
+      console.log(`[Auth] 正在向 Supabase 发起线上验证: ${targetEmail}`);
+      
+      // 2. 将包装好的凭证发给 Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: targetEmail,
+        password: targetPassword,
+      });
+
+      if (error) throw error;
+      
+      return { error: null };
+    } catch (err: any) {
+      console.error('[Auth] 真实登录失败:', err.message);
+      return { error: err };
     }
-
-    if (!data?.session) {
-      console.error('[Auth] ✗ 登录成功但未返回会话');
-      return { error: new Error('登录成功但会话获取失败') };
-    }
-
-    console.log('[Auth] ✓ Supabase认证成功');
-
-    // Ensure session persistence before proceeding to load profile/booth and set user.
-    let sessionRes = await supabase.auth.getSession();
-    let session = sessionRes.data?.session;
-    let attempts = 0;
-    while ((!session || !session.user) && attempts < 10) {
-      await new Promise((r) => setTimeout(r, 200));
-      sessionRes = await supabase.auth.getSession();
-      session = sessionRes.data?.session;
-      attempts += 1;
-    }
-
-    console.log('[Auth] ✓ 会话验证完毕，尝试次数:', attempts);
-    console.log('[Auth] 会话用户ID:', session?.user?.id);
-    console.log('[Auth] Access Token存在:', !!session?.access_token);
-
-    if (!session || !session.user) {
-      return { error: new Error('Auth session missing after sign-in') };
-    }
-
-    const userId = session.user.id;
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-
-    const { data: booth } = await supabase
-      .from('exhibitor_booths')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (profile) {
-      const userAccount: UserAccount = {
-        id: profile.id,
-        username: profile.username,
-        password: '',
-        displayName: profile.display_name || profile.username,
-        role: profile.role as UserRole,
-        phone: profile.phone ?? undefined,
-        email: booth?.email ?? undefined,
-        exhibitorName: booth?.exhibitor_name ?? undefined,
-        hallNumber: booth?.hall_number ?? undefined,
-        boothNumber: booth?.booth_number ?? undefined,
-        boothArea: booth?.booth_area ?? undefined,
-        boothHeight: booth?.booth_height ?? undefined,
-        boothCategory: booth?.booth_category as '标摊' | '特装'
-      };
-      setUser(userAccount);
-      setAuthMode('supabase');
-      console.log('[Auth] ✓ 用户信息已加载，角色:', profile.role);
-      console.log('[Auth] ==========================================');
-    }
-
-    return { error: null };
   };
 
   const logout = async () => {
@@ -379,11 +319,25 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('*')
       .eq('username', username)
       .single();
-    if (error) {
-      console.error('[Auth] getUserByUsername失败', error.message);
+    if (error || !data) {
+      console.error('[Auth] getUserByUsername失败', error?.message);
       return null;
     }
-    return data as UserAccount | null;
+    return {
+      id: data.id,
+      username: data.username,
+      password: '',
+      displayName: data.display_name || data.username,
+      role: data.role as UserRole,
+      phone: data.phone ?? undefined,
+      email: undefined,
+      exhibitorName: undefined,
+      hallNumber: undefined,
+      boothNumber: undefined,
+      boothArea: undefined,
+      boothHeight: undefined,
+      boothCategory: undefined,
+    };
   };
 
   const enterPreviewMode = (role: UserRole) => {
@@ -421,117 +375,6 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loggingIn, setLoggingIn] = useState(false);
-  const { login, user, enterPreviewMode, isPreviewMode } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (user) {
-      navigate(ROLE_ROUTES[user.role] || '/');
-    }
-  }, [user, navigate]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoggingIn(true);
-    const { error } = await login(username, password);
-    if (error) setError('账号或密码错误');
-    setLoggingIn(false);
-  };
-
-  const handlePreview = (role: UserRole) => {
-    enterPreviewMode(role);
-    navigate(ROLE_ROUTES[role] || '/');
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md"
-      >
-        <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">审图平台</h1>
-        <p className="text-center text-gray-500 mb-6">请登录您的账号</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">账号</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="请输入账号"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="请输入密码"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200 focus:outline-none"
-                tabIndex={-1}
-              >
-                <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'} text-sm`}></i>
-              </button>
-            </div>
-          </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loggingIn}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {loggingIn ? '登录中...' : '登录'}
-          </button>
-        </form>
-
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <p className="text-center text-sm text-gray-500 mb-4">角色预览（仅查看界面）</p>
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => handlePreview('reviewer')}
-              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-            >
-              <i className="fas fa-user-shield mr-1"></i>
-              审图员
-            </button>
-            <button
-              onClick={() => handlePreview('standard_exhibitor')}
-              className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-            >
-              <i className="fas fa-store mr-1"></i>
-              标摊展商
-            </button>
-            <button
-              onClick={() => handlePreview('custom_exhibitor')}
-              className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
-            >
-              <i className="fas fa-building mr-1"></i>
-              特装展商
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
 
 import FacilityApplication from './components/FacilityApplication';
 import ApplicationOverview from './components/ApplicationOverview';
@@ -1810,7 +1653,7 @@ function UserManagementPage() {
     }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     try {
       const lines = importData.trim().split('\n');
       const headers = lines[0].split(/\t|,/).map(h => h.trim());
@@ -1855,7 +1698,7 @@ function UserManagementPage() {
         }
       }
 
-      const result = importUsers(data);
+      const result = await importUsers(data);
       setImportResult({ success: result.success, failed: result.failed });
       setImportData('');
       setTimeout(() => setImportResult(null), 3000);
@@ -2310,7 +2153,7 @@ function App() {
     <AuthProvider>
       <HashRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route
             path="/admin"
