@@ -168,27 +168,23 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (username: string, password: string) => {
     try {
       const { supabase } = await import('./supabase/client');
-      
-      // 1. 重新加回自动包装逻辑
       let targetEmail = username;
       let targetPassword = password;
 
-      // 如果账号不包含 @ 符号（说明输入的是纯数字手机号/账号），就自动补齐
+      // 如果手动输入的是纯数字账号，自动隐式包装格式
       if (!username.includes('@')) {
         targetEmail = `${username}@test.com`;
         targetPassword = `${password}_secure`;
       }
 
       console.log(`[Auth] 正在向 Supabase 发起线上验证: ${targetEmail}`);
-      
-      // 2. 将包装好的凭证发给 Supabase
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: targetEmail,
         password: targetPassword,
       });
 
       if (error) throw error;
-      
       return { error: null };
     } catch (err: any) {
       console.error('[Auth] 真实登录失败:', err.message);
