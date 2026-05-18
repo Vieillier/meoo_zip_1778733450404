@@ -31,7 +31,7 @@ const DEFAULT_PUBLIC_SUPABASE_URL = 'https://aakexkggqspgpimfwlkn.supabase.co';
 const DEFAULT_PUBLIC_ANON_KEY = 'sb_publishable_Bee1XtMi-nVORakNZqFhxw_EuvxtAVb';
 
 export function getSupabaseUrl(): string {
-  const envUrl = process.env.VITE_SUPABASE_URL?.trim() || import.meta.env.VITE_SUPABASE_URL?.trim();
+  const envUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
   if (envUrl) return envUrl;
 
   // 线上环境直接指向真实远端 Supabase 实例，不再回退到本地代理
@@ -39,7 +39,7 @@ export function getSupabaseUrl(): string {
 }
 
 export function getSupabaseAnonKey(): string {
-  const envKey = process.env.VITE_SUPABASE_ANON_KEY?.trim() || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
   if (envKey) return envKey;
   return DEFAULT_PUBLIC_ANON_KEY || LEGACY_MEOO_ANON_KEY;
 }
