@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceRoleKey = Deno.env.get('PRIVATE_SERVICE_ROLE_KEY')!;
     const VIRTUAL_EMAIL_DOMAIN = Deno.env.get('VIRTUAL_EMAIL_DOMAIN') || 'test.com';
 
     const authHeader = req.headers.get('authorization') || '';
@@ -246,6 +246,23 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // 创建 profile 记录
+        const { error: profileError } = await supabaseAdmin
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            username: username,
+            display_name: displayName,
+            role: role,
+            phone: phone,
+          });
+
+        if (profileError) {
+          results.errors.push(`创建用户资料失败: ${username} - ${profileError.message}`);
+          results.failed++;
+          continue;
+        }
+
         // 创建展位信息
         const { error: boothError } = await supabaseAdmin
           .from('exhibitor_booths')
@@ -275,12 +292,20 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ success: true, results }), {
-      headers: corsHeaders,
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
     });
   } catch (error: any) {
+    console.error('Cloud function error:', error);
     return new Response(JSON.stringify({ error: error.message, stack: error.stack }), {
       status: 500,
-      headers: corsHeaders,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
     });
   }
 });

@@ -65,51 +65,62 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      // 如果没有会话，无法加载用户数据。必须重新登录。
       console.warn('[Auth] 无有效会话，无法加载用户数据');
       setAccounts([]);
       setLoading(false);
       return;
     }
 
-    const { data: profiles, error: profileError } = await supabase
-      .from('profiles')
-      .select('*');
+    console.log('[Auth] 开始加载用户数据，当前用户:', session.user.id);
 
-    if (profileError || !profiles || profiles.length === 0) {
-      console.warn('[Auth] 无法从Supabase加载用户数据:', profileError?.message);
+    try {
+      // 调用云函数获取所有展商账号（绕过 RLS 限制）
+      const { data: invokeResult, error: invokeError } = await supabase.functions.invoke('get-exhibitors', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      console.log('[Auth] 云函数调用结果:', { invokeResult, invokeError });
+
+      if (invokeError) {
+        console.error('[Auth] 云函数调用错误:', invokeError);
+        setAccounts([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!invokeResult || !invokeResult.exhibitors) {
+        console.warn('[Auth] 云函数返回无效数据:', invokeResult);
+        setAccounts([]);
+        setLoading(false);
+        return;
+      }
+
+      const mappedAccounts: UserAccount[] = invokeResult.exhibitors.map((item: any) => ({
+        id: item.id,
+        username: item.username,
+        password: item.password,
+        displayName: item.displayName,
+        role: item.role as UserRole,
+        phone: item.phone,
+        email: item.email,
+        exhibitorName: item.exhibitorName,
+        hallNumber: item.hallNumber,
+        boothNumber: item.boothNumber,
+        boothArea: item.boothArea,
+        boothHeight: item.boothHeight,
+        boothCategory: item.boothCategory as '标摊' | '特装'
+      }));
+
+      console.log('[Auth] 映射后的账户数:', mappedAccounts.length, '账户列表:', mappedAccounts);
+      setAccounts(mappedAccounts);
+      setLoading(false);
+    } catch (error: any) {
+      console.error('[Auth] 加载用户数据异常:', error);
       setAccounts([]);
       setLoading(false);
-      return;
     }
-
-    const { data: booths, error: boothError } = await supabase
-      .from('exhibitor_booths')
-      .select('*');
-
-    const mappedAccounts: UserAccount[] = profiles.map((p: any) => {
-      const booth = booths?.find((b: any) => b.user_id === p.id);
-      return {
-        id: p.id,
-        username: p.username,
-        password: booth?.booth_number || p.username,
-        displayName: p.display_name || p.username,
-        role: p.role as UserRole,
-        phone: p.phone ?? undefined,
-        email: booth?.email ?? undefined,
-        exhibitorName: booth?.exhibitor_name ?? undefined,
-        hallNumber: booth?.hall_number ?? undefined,
-        boothNumber: booth?.booth_number ?? undefined,
-        boothArea: booth?.booth_area ?? undefined,
-        boothHeight: booth?.booth_height ?? undefined,
-        boothCategory: booth?.booth_category as '标摊' | '特装'
-      };
-    });
-
-    // CRITICAL: 不再混合本地Mock账户和Supabase数据
-    // 现在只使用Supabase数据
-    setAccounts(mappedAccounts);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -156,6 +167,54 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       await fetchAccountsFromDB();
+
+      // 监听认证状态变化
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('[Auth] 认证状态变化:', event, session?.user?.id);
+
+        if (event === 'SIGNED_IN' && session?.user) {
+          // 用户登录成功，更新用户状态
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (profile && !profileError) {
+            const { data: booth } = await supabase
+              .from('exhibitor_booths')
+              .select('*')
+              .eq('user_id', session.user.id)
+              .maybeSingle();
+
+            setUser({
+              id: profile.id,
+              username: profile.username,
+              password: '',
+              displayName: profile.display_name || profile.username,
+              role: profile.role as UserRole,
+              phone: profile.phone ?? undefined,
+              email: booth?.email ?? undefined,
+              exhibitorName: booth?.exhibitor_name ?? undefined,
+              hallNumber: booth?.hall_number ?? undefined,
+              boothNumber: booth?.booth_number ?? undefined,
+              boothArea: booth?.booth_area ?? undefined,
+              boothHeight: booth?.booth_height ?? undefined,
+              boothCategory: booth?.booth_category as '标摊' | '特装'
+            });
+
+            console.log('[Auth] ✓ 用户状态已更新:', profile.role);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          // 用户登出
+          setUser(null);
+          console.log('[Auth] ✓ 用户已登出');
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
     };
 
     initializeAuth();
@@ -965,7 +1024,7 @@ function ExcelImportModal({
       console.log('[Import] 第4步: 发送请求到create_exhibitor云函数...');
       let invokeResult: any;
       try {
-        invokeResult = await supabase.functions.invoke('create_exhibitor', {
+        invokeResult = await supabase.functions.invoke('create-exhibitor', {
           body: JSON.stringify({ exhibitors: payloadExhibitors }),
           headers,
         });
@@ -983,11 +1042,17 @@ function ExcelImportModal({
 
       // Step 5: 解析响应
       console.log('[Import] 第5步: 解析响应...');
-      const responseStatus = (invokeResult as any).status ?? 200;
-      let result = (invokeResult as any).data;
-      
-      console.log('[Import] 响应状态码:', responseStatus);
-      
+      console.log('[Import] invokeResult:', invokeResult);
+
+      // supabase.functions.invoke() 返回 { data, error }
+      if (invokeResult.error) {
+        console.error('[Import] ✗ 云函数调用错误:', invokeResult.error);
+        throw new Error('云函数执行失败: ' + (invokeResult.error?.message || JSON.stringify(invokeResult.error)));
+      }
+
+      let result = invokeResult.data;
+      console.log('[Import] 响应数据:', result);
+
       if (typeof result === 'string') {
         try {
           result = JSON.parse(result || '{}');
@@ -996,27 +1061,20 @@ function ExcelImportModal({
         }
       }
 
-      // Step 6: 检查响应状态
+      // Step 6: 检查响应结果
       console.log('[Import] 第6步: 检查响应结果');
-      if (responseStatus >= 400) {
-        const errorMsg = result?.error || result?.message || `HTTP ${responseStatus}: 导入失败`;
-        console.error('[Import] ✗ 服务器错误:', errorMsg);
-        
-        if (responseStatus === 401) {
-          throw new Error('您的身份凭证在服务器端验证失败，请重新登录审图员账号。');
-        }
-        
-        throw new Error(errorMsg);
-      }
-
       if (!result || !result.results) {
         console.error('[Import] ✗ 响应无效：未返回有效结果');
+        console.error('[Import] 响应内容:', result);
         throw new Error('导入失败：服务器返回无效响应');
       }
 
       if (result.results.errors && result.results.errors.length > 0) {
-        console.error('[Import] ✗ 部分数据导入失败:', result.results.errors);
-        throw new Error('导入失败: ' + result.results.errors.join('; '));
+        console.warn('[Import] ⚠ 部分数据存在警告:', result.results.errors);
+        // 只有在完全没有成功记录时才视为失败
+        if (result.results.added === 0 && result.results.updated === 0) {
+          throw new Error('导入失败: ' + result.results.errors.join('; '));
+        }
       }
 
       console.log('[Import] ✓ 导入结果成功');
