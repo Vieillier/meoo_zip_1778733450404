@@ -17,66 +17,133 @@ export default function Login() {
     setError('');
 
     try {
-      const { session: authSession, error: authError } = await loginUser(username, password);
-      const email = (username.toLowerCase().replace(/[^a-z0-9]/g, '_') || '') + '@test.com';
-      console.log('[Auth] Login attempt:', { username, email, passwordLen: password.length, authError });
+      // Step 1: 包装账号密码
+      console.log('[Auth] ==========================================');
+      console.log('[Auth] 开始登录流程');
+      console.log('[Auth] 第1步: 包装账号密码');
+      console.log('[Auth] 原始输入 - 账号:', username, '密码长度:', password.length);
+      
+      // 手动执行包装逻辑，以便清晰诊断
+      const email = username.toLowerCase().replace(/[^a-z0-9]/g, '_') + '@test.com';
+      const PASSWORD_SUFFIX = '_secure';
+      const normalizedPassword = password.length >= 6 ? password : `${password}${PASSWORD_SUFFIX}`;
+      
+      console.log('[Auth] 包装后 - 邮箱:', email);
+      console.log('[Auth] 包装后 - 密码长度:', normalizedPassword.length, '(原始:', password.length, ')');
+      console.log('[Auth] 密码是否添加后缀:', normalizedPassword !== password ? 'YES' : 'NO');
 
-      if (authError) {
-        console.error('[Auth] signInWithPassword failed:', authError);
-        setError('登录失败：账号或密码错误，或邮箱尚未迁移至@test.com（请联系管理员）');
+      // Step 2: 调用Supabase登录
+      console.log('[Auth] 第2步: 调用Supabase signInWithPassword');
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: normalizedPassword,
+      });
+      
+      console.log('[Auth] Supabase响应 - error:', signInError?.message);
+      console.log('[Auth] Supabase响应 - session:', !!data?.session);
+      console.log('[Auth] Supabase响应 - user:', !!data?.user);
+
+      if (signInError) {
+        console.error('[Auth] ✗ signInWithPassword失败:', signInError);
+        
+        // 诊断可能的问题
+        if (signInError.message.includes('Invalid login credentials')) {
+          console.error('[Auth] 诊断: 账号或密码错误，或该账户不存在');
+        } else if (signInError.message.includes('400')) {
+          console.error('[Auth] 诊断: 请求参数有问题，检查邮箱或密码格式');
+        }
+        
+        setError(`登录失败: ${signInError.message}`);
         setLoading(false);
         return;
       }
 
-      // Ensure session is available/persisted before proceeding.
-      let sessionResult = await supabase.auth.getSession();
-      let session = sessionResult.data?.session;
-      let attempts = 0;
-      while ((!session || !session.user) && attempts < 10) {
-        await new Promise((r) => setTimeout(r, 200));
-        sessionResult = await supabase.auth.getSession();
-        session = sessionResult.data?.session;
-        attempts += 1;
-      }
-      console.log('Session saved:', !!session, {
-        attempts,
-        sessionUser: session?.user?.id ?? null,
-        hasAccessToken: !!session?.access_token,
-      });
-
-      if (!session || !session.user) {
+      if (!data?.session) {
+        console.error('[Auth] ✗ 登录成功但未返回会话');
         setError('登录后会话未能建立，请重试');
         setLoading(false);
         return;
       }
 
+      console.log('[Auth] ✓ signInWithPassword成功，已获取session');
+      console.log('[Auth] Session用户ID:', data.session.user?.id);
+      console.log('[Auth] 第3步: 验证会话是否已经成功建立');
+
+      // Step 3: 等待Supabase Auth会话可用
+      let sessionResult = await supabase.auth.getSession();
+      let session = sessionResult.data?.session;
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while ((!session || !session.user || !session.access_token) && attempts < maxAttempts) {
+        console.log('[Auth] 等待会话保存... 尝试', attempts + 1, '/', maxAttempts);
+        await new Promise((r) => setTimeout(r, 200));
+        sessionResult = await supabase.auth.getSession();
+        session = sessionResult.data?.session;
+        attempts += 1;
+      }
+
+      console.log('[Auth] ✓ 会话验证完毕');
+      console.log('[Auth] 会话有效:', !!session?.user);
+      console.log('[Auth] Access Token存在:', !!session?.access_token);
+      console.log('[Auth] 用户ID:', session?.user?.id);
+      console.log('[Auth] 尝试次数:', attempts);
+
+      if (!session || !session.user || !session.access_token) {
+        console.error('[Auth] ✗ 会话验证失败');
+        console.error('[Auth] 会话对象:', session);
+        setError('登录后会话验证失败，请重试');
+        setLoading(false);
+        return;
+      }
+
+      console.log('[Auth] ✓ 会话有效，开始获取用户角色');
       const userId = session.user.id;
 
-      const { data: profile } = await supabase
+      // Step 4: 获取用户角色
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', userId)
         .single();
 
+      if (profileError) {
+        console.error('[Auth] ✗ 获取用户角色失败:', profileError);
+        setError('获取用户信息失败，请重试');
+        setLoading(false);
+        return;
+      }
+
       const role = profile?.role;
+      console.log('[Auth] ✓ 获取用户角色成功:', role);
+      console.log('[Auth] ==========================================');
+      console.log('[Auth] 登录流程完成，准备导航');
+      
+      // Step 5: 根据角色导航
       switch (role) {
         case 'admin':
+          console.log('[Auth] 导航到: /admin');
           navigate('/admin');
           break;
         case 'reviewer':
+          console.log('[Auth] 导航到: /reviewer');
           navigate('/reviewer');
           break;
         case 'standard_exhibitor':
+          console.log('[Auth] 导航到: /exhibitor/standard');
           navigate('/exhibitor/standard');
           break;
         case 'custom_exhibitor':
+          console.log('[Auth] 导航到: /exhibitor/custom');
           navigate('/exhibitor/custom');
           break;
         default:
+          console.log('[Auth] 导航到: / (默认)');
           navigate('/');
       }
-    } catch {
-      setError('登录失败，请重试');
+    } catch (err: any) {
+      console.error('[Auth] ✗ 登录异常:', err);
+      setError(`登录异常: ${err?.message || '未知错误'}`);
       setLoading(false);
     }
   };

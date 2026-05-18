@@ -38,149 +38,12 @@ export const BOOTH_CATEGORY_MAP: Record<UserRole, BoothCategory> = {
   reviewer: '标摊'
 };
 
-export const DEFAULT_ACCOUNTS: UserAccount[] = [
-  {
-    id: '1',
-    username: 'admin',
-    password: 'admin123',
-    displayName: '管理员',
-    role: 'admin'
-  },
-  {
-    id: '2',
-    username: 'reviewer01',
-    password: 'pwd123',
-    displayName: '审图员01',
-    role: 'reviewer'
-  },
-  {
-    id: '3',
-    username: '17700000000',
-    password: '80F77',
-    displayName: '标摊展商联系人',
-    role: 'standard_exhibitor',
-    phone: '17700000000',
-    email: '987654321@qq.com',
-    exhibitorName: '标摊有限公司',
-    hallNumber: '8.1',
-    boothNumber: '80F77',
-    boothArea: 9,
-    boothHeight: 4,
-    boothCategory: '标摊'
-  },
-  {
-    id: '4',
-    username: '18800000000',
-    password: '80F88',
-    displayName: '特装联系人',
-    role: 'custom_exhibitor',
-    phone: '18800000000',
-    email: 'tezhuang@163.com',
-    exhibitorName: '特装有限公司',
-    hallNumber: '8.1',
-    boothNumber: '80F88',
-    boothArea: 9,
-    boothHeight: 4.5,
-    boothCategory: '特装'
-  },
-  {
-    id: '5',
-    username: '19900000000',
-    password: '80F99',
-    displayName: '超高联系人',
-    role: 'custom_exhibitor',
-    phone: '19900000000',
-    email: 'chaogao@163.com',
-    exhibitorName: '超高有限公司',
-    hallNumber: '8.1',
-    boothNumber: '80F99',
-    boothArea: 9,
-    boothHeight: 5,
-    boothCategory: '特装'
-  }
-];
-
-const STORAGE_KEY = 'review_platform_accounts';
-const DATA_VERSION_KEY = 'review_platform_data_version';
-const CURRENT_DATA_VERSION = '2';
-
-function isAccountComplete(account: UserAccount): boolean {
-  return !!(
-    account.exhibitorName &&
-    account.hallNumber &&
-    account.boothNumber &&
-    account.boothArea !== undefined &&
-    account.boothHeight !== undefined &&
-    account.boothCategory &&
-    account.phone &&
-    account.email
-  );
-}
-
-function shouldResetData(storedAccounts: UserAccount[]): boolean {
-  const exhibitorAccounts = storedAccounts.filter(a => a.role === 'standard_exhibitor' || a.role === 'custom_exhibitor');
-  if (exhibitorAccounts.length === 0) return false;
-  return exhibitorAccounts.some(a => !isAccountComplete(a));
-}
-
-export function getAccounts(): UserAccount[] {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  const storedVersion = localStorage.getItem(DATA_VERSION_KEY);
-
-  if (stored && storedVersion === CURRENT_DATA_VERSION) {
-    const parsed = JSON.parse(stored);
-    if (!shouldResetData(parsed)) {
-      return parsed;
-    }
-  }
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
-  localStorage.setItem(DATA_VERSION_KEY, CURRENT_DATA_VERSION);
-  return DEFAULT_ACCOUNTS;
-}
-
-export function updateAccount(updatedAccount: UserAccount): void {
-  const accounts = getAccounts();
-  const index = accounts.findIndex(a => a.id === updatedAccount.id);
-  if (index !== -1) {
-    accounts[index] = updatedAccount;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-  }
-}
-
-export function updatePassword(username: string, newPassword: string): boolean {
-  const accounts = getAccounts();
-  const account = accounts.find(a => a.username === username);
-  if (account) {
-    account.password = newPassword;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-    return true;
-  }
-  return false;
-}
-
-export function addAccount(account: UserAccount): void {
-  const accounts = getAccounts();
-  accounts.push(account);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-}
-
-export function deleteAccount(id: string): void {
-  const accounts = getAccounts();
-  const filtered = accounts.filter(a => a.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-}
-
-export function validateLogin(username: string, password: string): UserAccount | null {
-  const accounts = getAccounts();
-  return accounts.find(a => a.username === username && a.password === password) || null;
-}
-
-export function getAccountByUsername(username: string): UserAccount | null {
-  const accounts = getAccounts();
-  return accounts.find(a => a.username === username) || null;
-}
-
+/**
+ * 权限管理函数 - 判断当前用户是否可以管理目标用户
+ * @param currentRole 当前用户角色
+ * @param targetRole 目标用户角色
+ * @returns 是否可以管理
+ */
 export function canManageUser(currentRole: UserRole, targetRole: UserRole): boolean {
   if (currentRole === 'admin') return true;
   if (currentRole === 'reviewer') {
@@ -189,6 +52,11 @@ export function canManageUser(currentRole: UserRole, targetRole: UserRole): bool
   return false;
 }
 
+/**
+ * 获取当前用户可管理的角色列表
+ * @param currentRole 当前用户角色
+ * @returns 可管理的角色列表
+ */
 export function getManageableRoles(currentRole: UserRole): UserRole[] {
   if (currentRole === 'admin') {
     return ['admin', 'reviewer', 'standard_exhibitor', 'custom_exhibitor'];
@@ -199,6 +67,121 @@ export function getManageableRoles(currentRole: UserRole): UserRole[] {
   return [];
 }
 
+/**
+ * ⚠️ 说明：以下所有accountSUPABASE数据库操作的函数
+ * 
+ * 本项目已完全迁移到生产环境（GitHub + Netlify + Supabase）。
+ * localStorage Mock数据库已禁用。所有账户、用户数据现在均通过Supabase API存取。
+ * 
+ * 如需进行用户管理操作，请在App.tsx中直接调用Supabase SDK：
+ * 
+ * const { supabase } = await import('./supabase/client');
+ * 
+ * // 获取所有用户
+ * const { data: profiles } = await supabase
+ *   .from('profiles')
+ *   .select('*');
+ * 
+ * // 创建新用户
+ * const { data, error } = await supabase.auth.admin.createUser({ ... });
+ * 
+ * // 删除用户
+ * const { error } = await supabase.auth.admin.deleteUser(userId);
+ * 
+ * // 更新用户
+ * const { error } = await supabase
+ *   .from('profiles')
+ *   .update({ ... })
+ *   .eq('id', userId);
+ */
+
+/**
+ * ❌ 已弃用：getAccounts()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase查询profiles表
+ * @deprecated 使用 supabase.from('profiles').select('*') 替代
+ */
+export function getAccounts(): UserAccount[] {
+  console.warn('[DEPRECATED] getAccounts() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase API 替代：supabase.from("profiles").select("*")');
+  return [];
+}
+
+/**
+ * ❌ 已弃用：updateAccount()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase更新profiles表
+ * @deprecated 使用 supabase.from('profiles').update(...).eq('id', ...) 替代
+ */
+export function updateAccount(updatedAccount: UserAccount): void {
+  console.warn('[DEPRECATED] updateAccount() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase API 替代：supabase.from("profiles").update(...).eq("id", ...)');
+}
+
+/**
+ * ❌ 已弃用：updatePassword()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase Admin API更新用户密码
+ * @deprecated 使用 supabase.auth.admin.updateUserById(...) 替代
+ */
+export function updatePassword(username: string, newPassword: string): boolean {
+  console.warn('[DEPRECATED] updatePassword() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase Admin API 替代：supabase.auth.admin.updateUserById(...)');
+  return false;
+}
+
+/**
+ * ❌ 已弃用：addAccount()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase创建新用户
+ * @deprecated 使用 supabase.auth.admin.createUser(...) 替代
+ */
+export function addAccount(account: UserAccount): void {
+  console.warn('[DEPRECATED] addAccount() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase API 替代：supabase.auth.admin.createUser(...) 和 supabase.from("profiles").insert(...)');
+}
+
+/**
+ * ❌ 已弃用：deleteAccount()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase删除用户
+ * @deprecated 使用 supabase.auth.admin.deleteUser(...) 替代
+ */
+export function deleteAccount(id: string): void {
+  console.warn('[DEPRECATED] deleteAccount() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase Admin API 替代：supabase.auth.admin.deleteUser(...)');
+}
+
+/**
+ * ❌ 已弃用：validateLogin()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase Auth API进行身份验证
+ * @deprecated 使用 supabase.auth.signInWithPassword(...) 替代
+ */
+export function validateLogin(username: string, password: string): UserAccount | null {
+  console.warn('[DEPRECATED] validateLogin() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase Auth API 替代：supabase.auth.signInWithPassword(...)');
+  return null;
+}
+
+/**
+ * ❌ 已弃用：getAccountByUsername()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Supabase查询profiles表
+ * @deprecated 使用 supabase.from('profiles').select('*').eq('username', ...) 替代
+ */
+export function getAccountByUsername(username: string): UserAccount | null {
+  console.warn('[DEPRECATED] getAccountByUsername() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 请使用 Supabase API 替代：supabase.from("profiles").select("*").eq("username", ...)');
+  return null;
+}
+
+/**
+ * ❌ 已弃用：importExhibitorsFromTable()
+ * 原因：localStorage Mock数据库已禁用
+ * 替代方案：使用Excel导入流程通过Netlify Edge Function
+ * @deprecated 使用前端Excel导入组件通过create_exhibitor云函数替代
+ */
 export function importExhibitorsFromTable(data: Array<{
   contactPhone: string;
   boothNumber: string;
@@ -209,46 +192,7 @@ export function importExhibitorsFromTable(data: Array<{
   boothHeight?: number;
   email?: string;
 }>): { success: number; failed: number; accounts: UserAccount[] } {
-  const accounts = getAccounts();
-  const newAccounts: UserAccount[] = [];
-  let success = 0;
-  let failed = 0;
-
-  data.forEach(row => {
-    if (!row.contactPhone || !row.boothNumber) {
-      failed++;
-      return;
-    }
-
-    const existingIndex = accounts.findIndex(a => a.username === row.contactPhone);
-    const boothCategory: BoothCategory = row.boothHeight && row.boothHeight > 4 ? '特装' : '标摊';
-    const role: UserRole = boothCategory === '特装' ? 'custom_exhibitor' : 'standard_exhibitor';
-
-    const account: UserAccount = {
-      id: existingIndex >= 0 ? accounts[existingIndex].id : Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      username: row.contactPhone,
-      password: row.boothNumber,
-      displayName: row.contactName || row.exhibitorName || '展商',
-      role,
-      phone: row.contactPhone,
-      email: row.email || '',
-      exhibitorName: row.exhibitorName || '',
-      hallNumber: row.hallNumber || '',
-      boothNumber: row.boothNumber,
-      boothArea: row.boothArea || 9,
-      boothHeight: row.boothHeight || 4,
-      boothCategory
-    };
-
-    if (existingIndex >= 0) {
-      accounts[existingIndex] = account;
-    } else {
-      accounts.push(account);
-      newAccounts.push(account);
-    }
-    success++;
-  });
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-  return { success, failed, accounts: newAccounts };
+  console.warn('[DEPRECATED] importExhibitorsFromTable() 已弃用，localStorage Mock数据库不再支持');
+  console.warn('[HINT] 使用前端Excel导入组件，通过Netlify Edge Function的create_exhibitor函数处理');
+  return { success: 0, failed: data.length, accounts: [] };
 }

@@ -7,16 +7,8 @@ import {
   UserAccount,
   ROLE_LABELS,
   ROLE_ROUTES,
-  getAccounts,
-  validateLogin,
-  updatePassword,
   canManageUser,
-  getManageableRoles,
-  addAccount,
-  deleteAccount,
-  updateAccount,
-  importExhibitorsFromTable,
-  getAccountByUsername
+  getManageableRoles
 } from './constants/users';
 import { normalizeExhibitorPassword, generateVirtualEmail } from './utils/auth';
 import ExhibitorDetailPage from './pages/ExhibitorDetail';
@@ -28,10 +20,10 @@ interface AuthContextType {
   logout: () => void;
   accounts: UserAccount[];
   refreshAccounts: () => void;
-  updateUserPassword: (username: string, newPassword: string) => boolean;
-  createUser: (account: Omit<UserAccount, 'id'>) => void;
-  removeUser: (id: string) => void;
-  editUser: (account: UserAccount) => void;
+  updateUserPassword: (username: string, newPassword: string) => Promise<boolean>;
+  createUser: (account: Omit<UserAccount, 'id'>) => Promise<{ error: Error | null }>;
+  removeUser: (id: string) => Promise<void>;
+  editUser: (account: UserAccount) => Promise<void>;
   importUsers: (data: Array<{
     contactPhone: string;
     boothNumber: string;
@@ -41,13 +33,13 @@ interface AuthContextType {
     boothArea?: number;
     boothHeight?: number;
     email?: string;
-  }>) => { success: number; failed: number; accounts: UserAccount[] };
-  getUserByUsername: (username: string) => UserAccount | null;
+  }>) => Promise<{ success: number; failed: number; accounts: UserAccount[] }>;
+  getUserByUsername: (username: string) => Promise<UserAccount | null>;
   isPreviewMode: boolean;
   previewRole: UserRole | null;
   enterPreviewMode: (role: UserRole) => void;
   exitPreviewMode: () => void;
-  authMode: 'supabase' | 'local';
+  authMode: 'supabase';
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -64,7 +56,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [previewRole, setPreviewRole] = useState<UserRole | null>(null);
-  const [authMode, setAuthMode] = useState<'supabase' | 'local'>('supabase');
+  const [authMode, setAuthMode] = useState<'supabase'>('supabase');
 
   const fetchAccountsFromDB = async () => {
     const { supabase } = await import('./supabase/client');
@@ -72,8 +64,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      const localAccounts = getAccounts();
-      setAccounts(localAccounts);
+      // 如果没有会话，无法加载用户数据。必须重新登录。
+      console.warn('[Auth] 无有效会话，无法加载用户数据');
+      setAccounts([]);
       setLoading(false);
       return;
     }
@@ -83,8 +76,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('*');
 
     if (profileError || !profiles || profiles.length === 0) {
-      const localAccounts = getAccounts();
-      setAccounts(localAccounts);
+      console.warn('[Auth] 无法从Supabase加载用户数据:', profileError?.message);
+      setAccounts([]);
       setLoading(false);
       return;
     }
@@ -112,10 +105,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     });
 
-    const localAccounts = getAccounts();
-    const dbUsernames = new Set(mappedAccounts.map(a => a.username));
-    const missingAccounts = localAccounts.filter(a => !dbUsernames.has(a.username));
-    setAccounts([...mappedAccounts, ...missingAccounts]);
+    // CRITICAL: 不再混合本地Mock账户和Supabase数据
+    // 现在只使用Supabase数据
+    setAccounts(mappedAccounts);
     setLoading(false);
   };
 
@@ -176,19 +168,35 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     const { supabase } = await import('./supabase/client');
     const email = generateVirtualEmail(username);
     const normalizedPassword = normalizeExhibitorPassword(password);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: normalizedPassword });
-    console.log('[Auth] signInWithPassword result:', { data, error });
+    
+    console.log('[Auth] ==========================================');
+    console.log('[Auth] 登录流程开始');
+    console.log('[Auth] 原始账号:', username);
+    console.log('[Auth] 包装后邮箱:', email);
+    console.log('[Auth] 密码是否添加后缀:', normalizedPassword !== password);
+    
+    // CRITICAL: 不再有本地fallback。如果Supabase失败，直接返回错误。
+    const { data, error } = await supabase.auth.signInWithPassword({ 
+      email, 
+      password: normalizedPassword 
+    });
+    
+    console.log('[Auth] signInWithPassword响应 - error:', error?.message);
+    console.log('[Auth] signInWithPassword响应 - session:', !!data?.session);
 
     if (error) {
-      console.warn('[Auth] signInWithPassword returned error, preserving local fallback only when necessary.', error);
-      const account = validateLogin(username, password);
-      if (account) {
-        setUser(account);
-        setAuthMode('local');
-        return { error: null };
-      }
+      console.error('[Auth] ✗ Supabase认证失败，不使用本地fallback');
+      console.error('[Auth] 错误信息:', error.message);
+      // 不再调用validateLogin()！这会导致本地fallback
       return { error };
     }
+
+    if (!data?.session) {
+      console.error('[Auth] ✗ 登录成功但未返回会话');
+      return { error: new Error('登录成功但会话获取失败') };
+    }
+
+    console.log('[Auth] ✓ Supabase认证成功');
 
     // Ensure session persistence before proceeding to load profile/booth and set user.
     let sessionRes = await supabase.auth.getSession();
@@ -201,12 +209,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       attempts += 1;
     }
 
-    console.log('Session saved:', !!session, {
-      attempts,
-      sessionUser: session?.user?.id ?? null,
-      hasAccessToken: !!session?.access_token,
-      accessTokenType: session?.access_token ? typeof session.access_token : 'none'
-    });
+    console.log('[Auth] ✓ 会话验证完毕，尝试次数:', attempts);
+    console.log('[Auth] 会话用户ID:', session?.user?.id);
+    console.log('[Auth] Access Token存在:', !!session?.access_token);
 
     if (!session || !session.user) {
       return { error: new Error('Auth session missing after sign-in') };
@@ -244,6 +249,8 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       setUser(userAccount);
       setAuthMode('supabase');
+      console.log('[Auth] ✓ 用户信息已加载，角色:', profile.role);
+      console.log('[Auth] ==========================================');
     }
 
     return { error: null };
@@ -256,31 +263,99 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthMode('supabase');
   };
 
-  const updateUserPassword = (username: string, newPassword: string) => {
-    const success = updatePassword(username, newPassword);
-    if (success) refreshAccounts();
-    return success;
+  const updateUserPassword = async (username: string, newPassword: string) => {
+    const { supabase } = await import('./supabase/client');
+    const { data: user, error: userError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .single();
+
+    if (userError || !user?.id) {
+      console.error('[Auth] 更新密码失败：无法找到用户', username, userError?.message);
+      return false;
+    }
+
+    const userId = user.id;
+    const { error: updateError } = await supabase.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+    if (updateError) {
+      console.error('[Auth] 更新密码失败', updateError.message);
+      return false;
+    }
+
+    await refreshAccounts();
+    return true;
   };
 
   const createUser = async (account: Omit<UserAccount, 'id'>) => {
     const { supabase } = await import('./supabase/client');
-    const { data: authData } = await supabase.auth.getUser();
-    if (authData.user) {
-      await fetchAccountsFromDB();
+    const email = generateVirtualEmail(account.username);
+    const normalizedPassword = normalizeExhibitorPassword(account.password);
+
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password: normalizedPassword,
+    });
+
+    if (signUpError) {
+      console.error('[Auth] 创建用户失败', signUpError.message);
+      return { error: signUpError };
     }
+
+    if (!authData?.user?.id) {
+      console.error('[Auth] 创建用户失败：Supabase未返回user');
+      return { error: new Error('Supabase未返回新用户ID') };
+    }
+
+    const userId = authData.user.id;
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id: userId,
+      username: account.username,
+      display_name: account.displayName,
+      role: account.role,
+      phone: account.phone,
+    });
+
+    if (profileError) {
+      console.error('[Auth] 创建用户失败：插入profile失败', profileError.message);
+      return { error: profileError };
+    }
+
+    await fetchAccountsFromDB();
+    return { error: null };
   };
 
-  const removeUser = (id: string) => {
-    deleteAccount(id);
-    refreshAccounts();
+  const removeUser = async (id: string) => {
+    const { supabase } = await import('./supabase/client');
+    const { error } = await supabase.auth.admin.deleteUser(id);
+    if (error) {
+      console.error('[Auth] 删除用户失败', error.message);
+    }
+    await refreshAccounts();
   };
 
-  const editUser = (account: UserAccount) => {
-    updateAccount(account);
-    refreshAccounts();
+  const editUser = async (account: UserAccount) => {
+    const { supabase } = await import('./supabase/client');
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        username: account.username,
+        display_name: account.displayName,
+        role: account.role,
+        phone: account.phone,
+      })
+      .eq('id', account.id);
+
+    if (profileError) {
+      console.error('[Auth] 更新用户失败', profileError.message);
+    }
+
+    await refreshAccounts();
   };
 
-  const importUsers = (data: Array<{
+  const importUsers = async (data: Array<{
     contactPhone: string;
     boothNumber: string;
     contactName?: string;
@@ -290,13 +365,25 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     boothHeight?: number;
     email?: string;
   }>) => {
-    const result = importExhibitorsFromTable(data);
-    refreshAccounts();
-    return result;
+    // Excel导入逻辑已经由create_exhibitor云函数处理。
+    // 这里保留空实现，用外部导入函数替代。
+    console.warn('[Auth] importUsers() 已弃用，请使用create_exhibitor云函数导入数据');
+    await refreshAccounts();
+    return { success: 0, failed: data.length, accounts: [] };
   };
 
-  const getUserByUsername = (username: string) => {
-    return getAccountByUsername(username);
+  const getUserByUsername = async (username: string) => {
+    const { supabase } = await import('./supabase/client');
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('username', username)
+      .single();
+    if (error) {
+      console.error('[Auth] getUserByUsername失败', error.message);
+      return null;
+    }
+    return data as UserAccount | null;
   };
 
   const enterPreviewMode = (role: UserRole) => {
@@ -490,12 +577,8 @@ function ExhibitorDashboard() {
         return;
       }
 
-      // 如果是本地认证模式，直接使用 user 数据
-      if (authMode === 'local' && user) {
-        setAccountData(user);
-        setLoading(false);
-        return;
-      }
+      // CRITICAL: 移除本地认证模式处理。现在只支持Supabase认证。
+      // 不再检查 authMode === 'local'
 
       // Supabase 认证模式下的数据加载
       const { supabase } = await import('./supabase/client');
@@ -1009,7 +1092,7 @@ function ExcelImportModal({
         if (!accessToken) {
           console.error('[Import] 获取Token失败 - 可能原因：');
           console.error('[Import]   1. 用户未登录或会话已过期');
-          console.error('[Import]   2. localStorage中没有有效的会话数据');
+          console.error('[Import]   2. Supabase会话未正确建立或已丢失');
           console.error('[Import]   3. Token已过期，需要重新登录');
           throw new Error('审图员身份凭证无效，请重新登录审图员账号。');
         }

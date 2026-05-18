@@ -73,57 +73,90 @@ export function buildAuthHeaders(accessToken: string | null, extra: Record<strin
 
 /**
  * 直接获取并验证当前访问令牌
- * 不依赖refreshSession()，直接使用localStorage中的会话
- * 用于关键操作（如数据导入）前的Token验证
+ * 异步调用 supabase.auth.getSession()，每次都获取最新会话
+ * 不缓存结果，确保获取最新的Token
  * @returns 返回有效的访问令牌或null（表示需要重新登录）
  */
 export async function getValidAccessToken(): Promise<string | null> {
   try {
-    console.log('[TokenValidation] 步骤1: 获取当前会话...');
+    console.log('[TokenValidation] ==========================================');
+    console.log('[TokenValidation] 步骤1: 异步获取当前会话');
     
-    // 直接从localStorage获取会话，不尝试刷新
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    // 直接异步调用getSession()，每次都从Supabase Auth会话存储读取最新会话
+    // 注意：这是异步操作，不会返回缓存的旧会话
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     
+    console.log('[TokenValidation] getSession()调用完毕');
+    console.log('[TokenValidation] 返回状态 - error:', sessionError?.message);
+    console.log('[TokenValidation] 返回状态 - session:', !!sessionData?.session);
+
     if (sessionError) {
-      console.error('[TokenValidation] getSession错误:', sessionError.message);
+      console.error('[TokenValidation] ✗ getSession失败:', sessionError.message);
+      console.log('[TokenValidation] 诊断: 可能是网络错误或Supabase连接问题');
       return null;
     }
 
+    const session = sessionData?.session;
+
     if (!session) {
-      console.error('[TokenValidation] 会话不存在 - 用户需要重新登录');
-      console.warn('[TokenValidation] localStorage可能已被清除或会话已过期');
+      console.error('[TokenValidation] ✗ 会话不存在');
+      console.log('[TokenValidation] 诊断原因:');
+      console.log('[TokenValidation]   - 用户未登录');
+      console.log('[TokenValidation]   - Supabase会话存储中没有会话数据');
+      console.log('[TokenValidation]   - 会话已过期');
+      console.log('[TokenValidation] 解决方案: 用户需要重新登录');
+      return null;
+    }
+
+    if (!session.user) {
+      console.error('[TokenValidation] ✗ 会话中不存在用户信息');
       return null;
     }
 
     if (!session.access_token) {
-      console.error('[TokenValidation] Access Token为空');
+      console.error('[TokenValidation] ✗ 会话中不存在Access Token');
+      console.log('[TokenValidation] 会话对象:', {
+        user_id: session.user?.id,
+        expires_at: session.expires_at,
+        has_access_token: !!session.access_token,
+        has_refresh_token: !!session.refresh_token,
+      });
       return null;
     }
 
-    // 检查Token是否过期
+    // 验证Token是否过期
+    console.log('[TokenValidation] 步骤2: 验证Token有效性');
     const expiresAtMs = (session.expires_at || 0) * 1000;
     const nowMs = Date.now();
     
-    console.log('[TokenValidation] 步骤2: 验证Token过期时间');
-    console.log('[TokenValidation] Token过期时间 (ms):', expiresAtMs);
-    console.log('[TokenValidation] 当前时间 (ms):', nowMs);
+    console.log('[TokenValidation] Token过期时间 (Unix ms):', expiresAtMs);
+    console.log('[TokenValidation] 当前时间 (Unix ms):', nowMs);
     console.log('[TokenValidation] Token过期日期:', new Date(expiresAtMs).toISOString());
     console.log('[TokenValidation] 当前日期:', new Date(nowMs).toISOString());
 
     if (expiresAtMs <= nowMs) {
-      console.error('[TokenValidation] Token已过期');
+      console.error('[TokenValidation] ✗ Access Token已过期');
       console.log('[TokenValidation] 已过期', Math.floor((nowMs - expiresAtMs) / 1000), '秒');
+      console.log('[TokenValidation] 诊断: 需要刷新Token或重新登录');
       return null;
     }
 
     const timeUntilExpiry = expiresAtMs - nowMs;
-    console.log('[TokenValidation] 步骤3: Token有效 - 距离过期还有', Math.floor(timeUntilExpiry / 1000), '秒');
+    const secondsUntilExpiry = Math.floor(timeUntilExpiry / 1000);
+    
+    console.log('[TokenValidation] ✓ Token有效');
+    console.log('[TokenValidation] 距离过期还有:', secondsUntilExpiry, '秒 (' + Math.ceil(secondsUntilExpiry / 60) + '分钟)');
     console.log('[TokenValidation] Access Token长度:', session.access_token.length);
-    console.log('[TokenValidation] Token验证成功！返回有效Token');
+    console.log('[TokenValidation] 用户ID:', session.user.id);
+    console.log('[TokenValidation] ==========================================');
+    console.log('[TokenValidation] ✓ Token验证成功！返回有效Token');
     
     return session.access_token;
   } catch (error: any) {
-    console.error('[TokenValidation] 验证过程异常:', error);
+    console.error('[TokenValidation] ✗ Token验证过程异常:');
+    console.error('[TokenValidation] 错误类型:', error?.constructor?.name);
+    console.error('[TokenValidation] 错误消息:', error?.message);
+    console.error('[TokenValidation] 错误堆栈:', error?.stack);
     return null;
   }
 }
