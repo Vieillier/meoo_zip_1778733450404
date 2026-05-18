@@ -6,25 +6,42 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-declare const process: { env: { SUPABASE_URL?: string; SUPABASE_ANON_KEY?: string } };
+declare const process: {
+  env: {
+    VITE_SUPABASE_URL?: string;
+    VITE_SUPABASE_ANON_KEY?: string;
+    SUPABASE_URL?: string;
+    SUPABASE_ANON_KEY?: string;
+  };
+};
+
+declare global {
+  interface ImportMetaEnv {
+    VITE_SUPABASE_URL?: string;
+    VITE_SUPABASE_ANON_KEY?: string;
+    SUPABASE_URL?: string;
+    SUPABASE_ANON_KEY?: string;
+  }
+}
 
 const LEGACY_MEOO_ANON_KEY =
   'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc3ODk2NjIyLCJleHAiOjEzMjg4NTM2NjIyfQ.89Do5Sn4Uyeokzg-Iisk0Hw5aoR-nKpSvi8COzRzINg';
 
+const DEFAULT_PUBLIC_SUPABASE_URL = 'https://aakexkggqspgpimfwlkn.supabase.co';
+const DEFAULT_PUBLIC_ANON_KEY = 'sb_publishable_Bee1XtMi-nVORakNZqFhxw_EuvxtAVb';
+
 export function getSupabaseUrl(): string {
-  const envUrl = process.env.SUPABASE_URL?.trim();
+  const envUrl = process.env.VITE_SUPABASE_URL?.trim() || import.meta.env.VITE_SUPABASE_URL?.trim();
   if (envUrl) return envUrl;
-  const meooUrl = (window as any).MEOO_CONFIG?.meoo_app_access_url;
-  if (meooUrl) {
-    return `${meooUrl}/sb-api`;
-  }
-  return 'http://localhost:3015/sb-api';
+
+  // 线上环境直接指向真实远端 Supabase 实例，不再回退到本地代理
+  return DEFAULT_PUBLIC_SUPABASE_URL;
 }
 
 export function getSupabaseAnonKey(): string {
-  const envKey = process.env.SUPABASE_ANON_KEY?.trim();
+  const envKey = process.env.VITE_SUPABASE_ANON_KEY?.trim() || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
   if (envKey) return envKey;
-  return LEGACY_MEOO_ANON_KEY;
+  return DEFAULT_PUBLIC_ANON_KEY || LEGACY_MEOO_ANON_KEY;
 }
 
 export const supabaseUrl = getSupabaseUrl();
