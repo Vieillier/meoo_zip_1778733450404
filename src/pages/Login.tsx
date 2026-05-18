@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase/client';
 import { motion } from 'framer-motion';
+import { useAuth } from '../App';
+import { UserRole, ROLE_ROUTES } from '../constants/users';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -9,6 +11,12 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { enterPreviewMode } = useAuth();
+
+  const handlePreview = (role: UserRole) => {
+    enterPreviewMode(role);
+    navigate(ROLE_ROUTES[role] || '/');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,12 +194,34 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="mt-6 text-xs text-gray-400 text-center">
-          <p>测试账号：</p>
-          <p>管理员: admin / admin123</p>
-          <p>审图员: reviewer01 / pwd123</p>
-          <p>标摊展商: 17700000000 / 80F77</p>
-          <p>特装展商: 18800000000 / 80F88</p>
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <p className="text-center text-sm text-gray-500 mb-4">测试账号预览（只读沙箱）</p>
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={() => handlePreview('reviewer')}
+              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+            >
+              审图员预览
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePreview('standard_exhibitor')}
+              className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
+            >
+              标摊展商预览
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePreview('custom_exhibitor')}
+              className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
+            >
+              特装展商预览
+            </button>
+          </div>
+          <p className="mt-4 text-xs text-gray-400 text-center">
+            该模式为只读演示沙箱，不会调用 Supabase 登录，也不会执行增删改操作。
+          </p>
         </div>
       </motion.div>
     </div>
