@@ -174,7 +174,9 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       // 如果手动输入的是纯数字账号，自动隐式包装格式
       if (!username.includes('@')) {
         targetEmail = `${username}@test.com`;
-        targetPassword = `${password}_secure`;
+        if (password.length < 6) {
+          targetPassword = `${password}_secure`;
+        }
       }
 
       console.log(`[Auth] 正在向 Supabase 发起线上验证: ${targetEmail}`);

@@ -29,7 +29,9 @@ export default function Login() {
 
       if (!username.includes('@')) {
         targetEmail = `${username}@test.com`;
-        targetPassword = `${password}_secure`;
+        if (password.length < 6) {
+          targetPassword = `${password}_secure`;
+        }
       }
 
       console.log('[Auth] 正在向 Supabase 发起线上验证:', targetEmail);
