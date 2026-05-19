@@ -40,6 +40,7 @@ interface AuthContextType {
   previewRole: UserRole | null;
   enterPreviewMode: (role: UserRole) => void;
   exitPreviewMode: () => void;
+  checkPreviewMode: () => boolean;
   authMode: 'supabase';
 }
 
@@ -261,6 +262,12 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUserPassword = async (username: string, newPassword: string) => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return false;
+    }
+
     const { supabase } = await import('./supabase/client');
     const { data: user, error: userError } = await supabase
       .from('profiles')
@@ -287,6 +294,12 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const createUser = async (account: Omit<UserAccount, 'id'>) => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
     const { supabase } = await import('./supabase/client');
     const email = generateVirtualEmail(account.username);
     const normalizedPassword = normalizeExhibitorPassword(account.password);
@@ -325,6 +338,12 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeUser = async (id: string) => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
     const { supabase } = await import('./supabase/client');
     const { error } = await supabase.auth.admin.deleteUser(id);
     if (error) {
@@ -407,6 +426,14 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     setPreviewRole(null);
   };
 
+  const checkPreviewMode = () => {
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return true;
+    }
+    return false;
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -425,6 +452,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       previewRole,
       enterPreviewMode,
       exitPreviewMode,
+      checkPreviewMode,
       authMode
     }}>
       {children}
@@ -972,6 +1000,12 @@ function ExcelImportModal({
   const handleActivate = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
 
     if (parsedData.length === 0) return;
 
@@ -1531,6 +1565,12 @@ function UserManagementPage() {
   };
 
   const handleAddUser = async () => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
     if (!newUser.username || !newUser.password) return;
     const role: UserRole = newUser.boothCategory === '特装' ? 'custom_exhibitor' : 'standard_exhibitor';
 
@@ -1643,6 +1683,12 @@ function UserManagementPage() {
   };
 
   const handleEditUser = async () => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
     if (!editingUser) return;
 
     try {
@@ -1695,6 +1741,12 @@ function UserManagementPage() {
   };
 
   const handleResetPassword = async (username: string) => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
     const newPassword = prompt('请输入新密码:');
     if (!newPassword) {
       return;
@@ -1719,6 +1771,12 @@ function UserManagementPage() {
   };
 
   const handleDeleteUser = async (id: string) => {
+    // 预览模式下禁用此操作
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
     if (!confirm('确定要删除此用户吗?')) return;
 
     const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
