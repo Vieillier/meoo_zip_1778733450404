@@ -57,6 +57,9 @@ const DRAWING_TYPES = [
   { key: 'fire_facility_drawing_urls', label: '消防设施布局图' }
 ];
 
+// 文件大小限制：5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+
 const STATUS_CONFIG = {
   pending: { label: '待审核', color: 'bg-yellow-100 text-yellow-700', icon: 'fa-clock' },
   approved: { label: '审核通过', color: 'bg-green-100 text-green-700', icon: 'fa-check-circle' },
@@ -143,6 +146,13 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
       alert('预览模式下无法上传文件');
       return null;
     }
+
+    // 检查文件大小
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`文件大小超过限制！最大允许 5MB，当前文件大小 ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+      return null;
+    }
+
     setUploading(docKey);
     try {
       const base64 = await fileToBase64(file);

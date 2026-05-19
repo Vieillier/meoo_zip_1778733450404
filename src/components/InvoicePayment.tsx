@@ -19,6 +19,8 @@ interface InvoicePaymentProps {
 }
 
 const STORAGE_KEY = 'invoice_draft';
+// 文件大小限制：5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
 
 export default function InvoicePayment({ userId, boothNumber, isPreviewMode = false }: InvoicePaymentProps) {
   const [invoiceInfo, setInvoiceInfo] = useState<InvoiceInfo>({
@@ -131,6 +133,11 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && isImageFile(file)) {
+      // 检查文件大小
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`文件大小超过限制！最大允许 5MB，当前文件大小 ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        return;
+      }
       setSelectedFile(file);
     } else if (file) {
       alert('仅支持图片类文件');
@@ -142,6 +149,11 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file && isImageFile(file)) {
+      // 检查文件大小
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`文件大小超过限制！最大允许 5MB，当前文件大小 ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+        return;
+      }
       setSelectedFile(file);
     } else if (file) {
       alert('仅支持图片类文件');
