@@ -205,10 +205,17 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             console.log('[Auth] ✓ 用户状态已更新:', profile.role);
+
+            // 修复：登录成功后立即加载展商列表（针对审图员）
+            if (['reviewer', 'admin'].includes(profile.role)) {
+              console.log('[Auth] 检测到审图员/管理员登录，加载展商列表...');
+              await fetchAccountsFromDB();
+            }
           }
         } else if (event === 'SIGNED_OUT') {
           // 用户登出
           setUser(null);
+          setAccounts([]);
           console.log('[Auth] ✓ 用户已登出');
         }
       });

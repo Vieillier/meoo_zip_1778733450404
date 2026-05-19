@@ -123,6 +123,14 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
 
   const hasBeenReviewed = () => !!lastReviewedAt;
 
+  // 检查是否有驳回意见（即使 last_reviewed_at 为 null，也可能有驳回）
+  const hasRejectionComments = () => {
+    return DRAWING_TYPES.some(({ key }) => {
+      const commentKey = getCommentKey(key);
+      return reviewState[commentKey] && reviewState[commentKey].trim() !== '';
+    });
+  };
+
   const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve((reader.result as string).split(',')[1]);
@@ -139,10 +147,11 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
     try {
       const base64 = await fileToBase64(file);
       const fileExt = file.name.split('.').pop();
-      const fileName = `${boothNumber}/${docKey}/${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('drawing-documents').upload(fileName, decode(base64), { contentType: file.type });
+      const fileName = `drawings/${boothNumber}/${docKey}/${Date.now()}.${fileExt}`;
+      // 使用 qualification-documents bucket 存储图纸文件
+      const { error: uploadError } = await supabase.storage.from('qualification-documents').upload(fileName, decode(base64), { contentType: file.type });
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('drawing-documents').getPublicUrl(fileName);
+      const { data: urlData } = supabase.storage.from('qualification-documents').getPublicUrl(fileName);
       const historyType = docKey.replace('_urls', '');
       await supabase.from('drawing_history').insert({ booth_number: boothNumber, drawing_type: historyType, file_url: urlData.publicUrl, review_round: reviewRound });
       return urlData.publicUrl;
@@ -193,32 +202,22 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
 
     try {
       const { data: existing } = await supabase.from('drawing_documents').select('id').eq('booth_number', boothNumber).maybeSingle();
-      const { data: historyData } = await supabase.from('drawing_history').select('*').eq('booth_number', boothNumber).order('uploaded_at', { ascending: false });
-      const historyUrls: Record<string, string[]> = {};
-      DRAWING_TYPES.forEach(({ key }) => {
-        const dbField = key.replace('_urls', '');
-        historyUrls[key] = [];
-      });
-      historyData?.forEach((record: any) => {
-        const typeKey = record.drawing_type + '_urls';
-        if (!historyUrls[typeKey]) historyUrls[typeKey] = [];
-        if (!historyUrls[typeKey].includes(record.file_url)) {
-          historyUrls[typeKey].push(record.file_url);
-        }
-      });
+
+      // 直接使用当前的 drawings 状态，不需要合并历史记录
       const payload = {
-        effect_drawing_urls: [...(drawings.effect_drawing_urls || []), ...(historyUrls['effect_drawing_urls'] || [])],
-        elevation_grid_drawing_urls: [...(drawings.elevation_grid_drawing_urls || []), ...(historyUrls['elevation_grid_drawing_urls'] || [])],
-        plan_drawing_urls: [...(drawings.plan_drawing_urls || []), ...(historyUrls['plan_drawing_urls'] || [])],
-        structure_drawing_urls: [...(drawings.structure_drawing_urls || []), ...(historyUrls['structure_drawing_urls'] || [])],
-        material_drawing_urls: [...(drawings.material_drawing_urls || []), ...(historyUrls['material_drawing_urls'] || [])],
-        electrical_system_drawing_urls: [...(drawings.electrical_system_drawing_urls || []), ...(historyUrls['electrical_system_drawing_urls'] || [])],
-        utility_position_drawing_urls: [...(drawings.utility_position_drawing_urls || []), ...(historyUrls['utility_position_drawing_urls'] || [])],
-        fire_facility_drawing_urls: [...(drawings.fire_facility_drawing_urls || []), ...(historyUrls['fire_facility_drawing_urls'] || [])],
+        effect_drawing_urls: drawings.effect_drawing_urls || [],
+        elevation_grid_drawing_urls: drawings.elevation_grid_drawing_urls || [],
+        plan_drawing_urls: drawings.plan_drawing_urls || [],
+        structure_drawing_urls: drawings.structure_drawing_urls || [],
+        material_drawing_urls: drawings.material_drawing_urls || [],
+        electrical_system_drawing_urls: drawings.electrical_system_drawing_urls || [],
+        utility_position_drawing_urls: drawings.utility_position_drawing_urls || [],
+        fire_facility_drawing_urls: drawings.fire_facility_drawing_urls || [],
         is_submitted: true,
         submitted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+
       if (existing?.id) {
         const { error } = await supabase.from('drawing_documents').update(payload).eq('id', existing.id);
         if (error) throw error;
@@ -310,7 +309,7 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
           {reviewRound > 0 && <p className="text-sm text-gray-500 mt-1">第 {reviewRound} 轮整改</p>}
         </div>
         <div className="flex items-center gap-3">
-          {isSubmitted && !isEditMode && hasBeenReviewed() && !allApproved && (
+          {isSubmitted && !isEditMode && (hasBeenReviewed() || hasRejectionComments()) && !allApproved && (
             <button onClick={handleEnableEditMode} disabled={isPreviewMode} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">开启修改模式</button>
           )}
           {isSubmitted && !isEditMode && !finalApproved && <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-medium">等待审核</span>}

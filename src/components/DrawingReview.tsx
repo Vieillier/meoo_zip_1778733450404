@@ -176,6 +176,48 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
     setSubmitting(false);
   };
 
+  const handleRejectAgain = async () => {
+    if (!confirm('确认要驳回此次审核吗？展商将需要重新提交整改申报。')) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data: existing } = await supabase
+        .from('drawing_documents')
+        .select('id, review_round')
+        .eq('booth_number', boothNumber)
+        .maybeSingle();
+
+      if (!existing) {
+        alert('未找到审核记录');
+        setSubmitting(false);
+        return;
+      }
+
+      // 重置所有图纸状态为待审核，但保留审核意见供展商查看
+      const updateData: any = {};
+      DRAWING_TYPES.forEach(({ dbField }) => {
+        updateData[`${dbField}_status`] = 'pending';
+        // 保留审核意见，不清空，这样展商可以看到为什么被驳回
+        // updateData[`${dbField}_comment`] = '';
+      });
+
+      updateData.is_submitted = true; // 展商需要重新提交
+      updateData.last_reviewed_at = null; // 清空最后审核时间
+
+      await supabase
+        .from('drawing_documents')
+        .update(updateData)
+        .eq('id', existing.id);
+
+      alert('已驳回此次审核，展商可重新提交整改申报');
+      onClose();
+    } catch (error) {
+      alert('驳回失败: ' + (error as Error).message);
+    }
+    setSubmitting(false);
+  };
+
   const getFileName = (url: string) => url.split('/').pop() || '文件';
   const isImage = (url: string) => /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
 
@@ -258,9 +300,16 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
                   {submitting ? '提交中...' : allApproved ? '审核通过' : '提交审核意见'}
                 </button>
               ) : (
-                <div className="flex-1 py-3 bg-gray-100 text-gray-500 rounded-lg text-center">
-                  <i className="fas fa-check-circle mr-2"></i>审核已完成
-                </div>
+                <>
+                  <div className="flex-1 py-3 bg-gray-100 text-gray-500 rounded-lg text-center">
+                    <i className="fas fa-check-circle mr-2"></i>审核已完成
+                  </div>
+                  {allApproved && (
+                    <button onClick={handleRejectAgain} disabled={submitting} className="flex-1 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50">
+                      {submitting ? '处理中...' : '可再次驳回'}
+                    </button>
+                  )}
+                </>
               )}
               <button onClick={onClose} className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">关闭</button>
             </div>

@@ -5,6 +5,7 @@ import QualificationReview from './QualificationReview';
 import DrawingReview from './DrawingReview';
 import { Document, Paragraph, TextRun, Packer, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
 
 interface BoothRecord {
   id: string;
@@ -215,6 +216,137 @@ export default function CustomBoothReview() {
     saveAs(blob, `审图通过证_${booth.booth_number}_${booth.exhibitor_name}.docx`);
   };
 
+  const downloadAllDrawings = async () => {
+    try {
+      alert('正在准备下载，请稍候...');
+      const zip = new JSZip();
+
+      // 获取所有特装展位的图纸数据
+      const { data: drawingsData, error: drawingsError } = await supabase
+        .from('drawing_documents')
+        .select('*')
+        .in('booth_number', booths.map(b => b.booth_number));
+
+      if (drawingsError) throw drawingsError;
+
+      // 分类：已全部通过 vs 未全部通过
+      const passedBooths: typeof drawingsData = [];
+      const unpassedBooths: typeof drawingsData = [];
+
+      drawingsData?.forEach((drawing: any) => {
+        const isAllPassed = [
+          drawing.effect_drawing_status,
+          drawing.elevation_grid_drawing_status,
+          drawing.plan_drawing_status,
+          drawing.structure_drawing_status,
+          drawing.material_drawing_status,
+          drawing.electrical_system_drawing_status,
+          drawing.utility_position_drawing_status,
+          drawing.fire_facility_drawing_status
+        ].every(status => status === 'approved');
+
+        if (isAllPassed) {
+          passedBooths.push(drawing);
+        } else {
+          unpassedBooths.push(drawing);
+        }
+      });
+
+      // 处理已全部通过的展商
+      if (passedBooths.length > 0) {
+        const passedFolder = zip.folder('已全部通过的展商');
+        for (const drawing of passedBooths) {
+          const boothFolder = passedFolder?.folder(`${drawing.booth_number}_${drawing.exhibitor_name || '未命名'}`);
+
+          // 下载所有图纸文件
+          const drawingTypes = [
+            { key: 'effect_drawing_urls', label: '多角度效果图' },
+            { key: 'elevation_grid_drawing_urls', label: '立面网格图' },
+            { key: 'plan_drawing_urls', label: '平面图' },
+            { key: 'structure_drawing_urls', label: '内部结构图' },
+            { key: 'material_drawing_urls', label: '材质图' },
+            { key: 'electrical_system_drawing_urls', label: '配电系统图' },
+            { key: 'utility_position_drawing_urls', label: '水电气网点位设施位置图' },
+            { key: 'fire_facility_drawing_urls', label: '消防设施布局图' }
+          ];
+
+          for (const drawingType of drawingTypes) {
+            const urls = drawing[drawingType.key] || [];
+            if (urls.length > 0) {
+              const typeFolder = boothFolder?.folder(drawingType.label);
+              for (let i = 0; i < urls.length; i++) {
+                try {
+                  const response = await fetch(urls[i]);
+                  const blob = await response.blob();
+                  const fileName = `${drawingType.label}_${i + 1}${getFileExtension(urls[i])}`;
+                  typeFolder?.file(fileName, blob);
+                } catch (error) {
+                  console.error(`Failed to download ${urls[i]}:`, error);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 处理未全部通过的展商
+      if (unpassedBooths.length > 0) {
+        const unpassedFolder = zip.folder('未全部通过的展商');
+        for (const drawing of unpassedBooths) {
+          const boothFolder = unpassedFolder?.folder(`${drawing.booth_number}_${drawing.exhibitor_name || '未命名'}`);
+
+          // 下载所有图纸文件
+          const drawingTypes = [
+            { key: 'effect_drawing_urls', label: '多角度效果图' },
+            { key: 'elevation_grid_drawing_urls', label: '立面网格图' },
+            { key: 'plan_drawing_urls', label: '平面图' },
+            { key: 'structure_drawing_urls', label: '内部结构图' },
+            { key: 'material_drawing_urls', label: '材质图' },
+            { key: 'electrical_system_drawing_urls', label: '配电系统图' },
+            { key: 'utility_position_drawing_urls', label: '水电气网点位设施位置图' },
+            { key: 'fire_facility_drawing_urls', label: '消防设施布局图' }
+          ];
+
+          for (const drawingType of drawingTypes) {
+            const urls = drawing[drawingType.key] || [];
+            if (urls.length > 0) {
+              const typeFolder = boothFolder?.folder(drawingType.label);
+              for (let i = 0; i < urls.length; i++) {
+                try {
+                  const response = await fetch(urls[i]);
+                  const blob = await response.blob();
+                  const fileName = `${drawingType.label}_${i + 1}${getFileExtension(urls[i])}`;
+                  typeFolder?.file(fileName, blob);
+                } catch (error) {
+                  console.error(`Failed to download ${urls[i]}:`, error);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 生成 ZIP 文件
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      saveAs(zipBlob, `特装展位图纸_${new Date().toISOString().split('T')[0]}.zip`);
+      alert('下载完成！');
+    } catch (error) {
+      console.error('Error downloading drawings:', error);
+      alert('下载失败: ' + (error as Error).message);
+    }
+  };
+
+  const getFileExtension = (url: string): string => {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const match = pathname.match(/\.[^.]+$/);
+      return match ? match[0] : '.pdf';
+    } catch {
+      return '.pdf';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-sm p-6">
@@ -282,6 +414,13 @@ export default function CustomBoothReview() {
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
           >
             重置筛选
+          </button>
+          <button
+            onClick={downloadAllDrawings}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <i className="fas fa-download"></i>
+            一键下载图纸
           </button>
         </div>
       </div>
