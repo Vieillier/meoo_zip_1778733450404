@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main 
+      - main
 
 permissions:
   contents: read
@@ -34,6 +34,8 @@ jobs:
         with:
           node-version: 24
           cache: 'pnpm'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install dependencies
         run: pnpm install
@@ -43,6 +45,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         run: pnpm build
 
       - name: Setup Pages
