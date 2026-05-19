@@ -26,6 +26,7 @@ interface BoothRecord {
   builder_contact_name?: string;
   builder_contact_phone?: string;
   builder_contact_email?: string;
+  submitted_at?: string | null;
 }
 
 interface FilterState {
@@ -33,6 +34,7 @@ interface FilterState {
   boothNumber: string;
   exhibitorName: string;
   heightType: '' | '不超高' | '超高';
+  sortByTime: '' | 'asc' | 'desc';
 }
 
 export default function CustomBoothReview() {
@@ -42,7 +44,8 @@ export default function CustomBoothReview() {
     hallNumber: '',
     boothNumber: '',
     exhibitorName: '',
-    heightType: ''
+    heightType: '',
+    sortByTime: ''
   });
   const [selectedBooth, setSelectedBooth] = useState<BoothRecord | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -61,7 +64,7 @@ export default function CustomBoothReview() {
       if (boothsError) throw boothsError;
 
       const boothNumbers = boothsData?.map(b => b.booth_number) || [];
-      
+
       const { data: boothInfoData } = await supabase
         .from('booth_info')
         .select('*')
@@ -72,9 +75,16 @@ export default function CustomBoothReview() {
         .select('*')
         .in('booth_number', boothNumbers);
 
+      // 获取图纸提交时间
+      const { data: drawingDocsData } = await supabase
+        .from('drawing_documents')
+        .select('booth_number, last_reviewed_at')
+        .in('booth_number', boothNumbers);
+
       const mergedData = boothsData?.map(booth => {
         const boothInfo = boothInfoData?.find(info => info.booth_number === booth.booth_number);
         const builderInfo = builderInfoData?.find(info => info.booth_number === booth.booth_number);
+        const drawingDoc = drawingDocsData?.find(doc => doc.booth_number === booth.booth_number);
         return {
           ...booth,
           need_screen: boothInfo?.need_screen || false,
@@ -82,7 +92,8 @@ export default function CustomBoothReview() {
           builder_name: builderInfo?.builder_name || '',
           builder_contact_name: builderInfo?.contact_name || '',
           builder_contact_phone: builderInfo?.contact_phone || '',
-          builder_contact_email: builderInfo?.contact_email || ''
+          builder_contact_email: builderInfo?.contact_email || '',
+          submitted_at: drawingDoc?.last_reviewed_at || null
         };
       });
 
@@ -111,6 +122,27 @@ export default function CustomBoothReview() {
       if (heightType !== filters.heightType) return false;
     }
     return true;
+  }).sort((a, b) => {
+    // 时间排序
+    if (filters.sortByTime) {
+      const timeA = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
+      const timeB = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
+
+      if (filters.sortByTime === 'asc') {
+        // 顺序：未提交的排在最前面，然后按时间从早到晚
+        if (!a.submitted_at && !b.submitted_at) return 0;
+        if (!a.submitted_at) return -1;
+        if (!b.submitted_at) return 1;
+        return timeA - timeB;
+      } else {
+        // 倒序：按时间从晚到早，未提交的排在最后
+        if (!a.submitted_at && !b.submitted_at) return 0;
+        if (!a.submitted_at) return 1;
+        if (!b.submitted_at) return -1;
+        return timeB - timeA;
+      }
+    }
+    return 0;
   });
 
   const uniqueHallNumbers = Array.from(new Set(booths.map(b => b.hall_number).filter(Boolean)));
@@ -119,6 +151,17 @@ export default function CustomBoothReview() {
     if (heightType === '超高') return 'bg-red-100 text-red-700';
     if (heightType === '不超高') return 'bg-green-100 text-green-700';
     return 'bg-gray-100 text-gray-700';
+  };
+
+  const formatSubmittedTime = (time: string | null | undefined) => {
+    if (!time) return '未提交';
+    const date = new Date(time);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
   };
 
   const generateReviewCertificate = async (booth: BoothRecord) => {
@@ -352,7 +395,7 @@ export default function CustomBoothReview() {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-xl font-bold text-gray-800 mb-4">特装展位审图</h2>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">展馆号</label>
             <select
@@ -401,6 +444,19 @@ export default function CustomBoothReview() {
               <option value="超高">超高（&ge;4.5米）</option>
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">提交时间排序</label>
+            <select
+              value={filters.sortByTime}
+              onChange={(e) => setFilters({ ...filters, sortByTime: e.target.value as '' | 'asc' | 'desc' })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">默认</option>
+              <option value="desc">时间倒序（最新在前）</option>
+              <option value="asc">时间顺序（最早在前）</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex gap-2">
@@ -409,7 +465,8 @@ export default function CustomBoothReview() {
               hallNumber: '',
               boothNumber: '',
               exhibitorName: '',
-              heightType: ''
+              heightType: '',
+              sortByTime: ''
             })}
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
           >
@@ -440,6 +497,7 @@ export default function CustomBoothReview() {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">展商名称</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">展位面积</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">高度类型</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">提交时间</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系人</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系电话</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
@@ -464,6 +522,11 @@ export default function CustomBoothReview() {
                       <td className="px-4 py-3 text-sm">
                         <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${getHeightTypeBadgeColor(heightType)}`}>
                           {heightType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        <span className={booth.submitted_at ? 'text-gray-900' : 'text-gray-400'}>
+                          {formatSubmittedTime(booth.submitted_at)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">{booth.contact_name || '-'}</td>

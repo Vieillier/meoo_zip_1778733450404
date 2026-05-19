@@ -91,6 +91,7 @@ interface FilterState {
   dateRange: string;
   showOnlyApplications: boolean;
   heightStatus: string;
+  sortByTime: '' | 'asc' | 'desc';
 }
 
 export default function ApplicationOverview() {
@@ -104,7 +105,8 @@ export default function ApplicationOverview() {
     paymentStatus: '',
     dateRange: '',
     showOnlyApplications: false,
-    heightStatus: ''
+    heightStatus: '',
+    sortByTime: ''
   });
   const [selectedBooth, setSelectedBooth] = useState<BoothApplications | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -285,10 +287,56 @@ export default function ApplicationOverview() {
       if (!hasDateMatch) return false;
     }
     return true;
+  }).sort((a, b) => {
+    // 时间排序
+    if (filters.sortByTime) {
+      // 获取展位最新的申报时间
+      const getLatestTime = (booth: BoothApplications) => {
+        const times = booth.applications
+          .filter(app => app.created_at)
+          .map(app => new Date(app.created_at!).getTime());
+        return times.length > 0 ? Math.max(...times) : 0;
+      };
+
+      const timeA = getLatestTime(a);
+      const timeB = getLatestTime(b);
+
+      if (filters.sortByTime === 'asc') {
+        // 顺序：未申报的排在最前面，然后按时间从早到晚
+        if (timeA === 0 && timeB === 0) return 0;
+        if (timeA === 0) return -1;
+        if (timeB === 0) return 1;
+        return timeA - timeB;
+      } else {
+        // 倒序：按时间从晚到早，未申报的排在最后
+        if (timeA === 0 && timeB === 0) return 0;
+        if (timeA === 0) return 1;
+        if (timeB === 0) return -1;
+        return timeB - timeA;
+      }
+    }
+    return 0;
   });
 
   const uniqueHallNumbers = Array.from(new Set(groupedByBooth.map(b => b.hall_number).filter(Boolean)));
   const uniqueBoothNumbers = Array.from(new Set(groupedByBooth.map(b => b.booth_number).filter(Boolean)));
+
+  const formatApplicationTime = (applications: Application[]) => {
+    const times = applications
+      .filter(app => app.created_at)
+      .map(app => new Date(app.created_at!));
+
+    if (times.length === 0) return '-';
+
+    // 获取最新的时间
+    const latestTime = new Date(Math.max(...times.map(t => t.getTime())));
+    const year = latestTime.getFullYear();
+    const month = String(latestTime.getMonth() + 1).padStart(2, '0');
+    const day = String(latestTime.getDate()).padStart(2, '0');
+    const hours = String(latestTime.getHours()).padStart(2, '0');
+    const minutes = String(latestTime.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -326,12 +374,20 @@ export default function ApplicationOverview() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">申报时间</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">申报时间范围</label>
             <select value={filters.dateRange} onChange={(e) => setFilters({ ...filters, dateRange: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
               <option value="">全部</option>
               <option value="today">今天</option>
               <option value="week">本周</option>
               <option value="month">本月</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">时间排序</label>
+            <select value={filters.sortByTime} onChange={(e) => setFilters({ ...filters, sortByTime: e.target.value as '' | 'asc' | 'desc' })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              <option value="">默认</option>
+              <option value="desc">时间倒序（最新在前）</option>
+              <option value="asc">时间顺序（最早在前）</option>
             </select>
           </div>
           <div>
@@ -360,7 +416,8 @@ export default function ApplicationOverview() {
                 paymentStatus: '',
                 dateRange: '',
                 showOnlyApplications: false,
-                heightStatus: ''
+                heightStatus: '',
+                sortByTime: ''
               })}
               className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors border border-gray-300"
             >
@@ -404,7 +461,7 @@ export default function ApplicationOverview() {
                         </div>
                       ) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{booth.applications.length > 0 && booth.applications[0].created_at ? new Date(booth.applications[0].created_at).toLocaleDateString('zh-CN') : '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{formatApplicationTime(booth.applications)}</td>
                     <td className="px-4 py-3 text-sm">
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${PAYMENT_STATUS_LABELS[booth.payment_status]?.color || 'bg-gray-100'}`}>
                         {PAYMENT_STATUS_LABELS[booth.payment_status]?.label || booth.payment_status}
