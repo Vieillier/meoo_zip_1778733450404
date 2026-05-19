@@ -38,7 +38,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build project
         # 🔒 核心修复：在这里精准、安全地注入你在 GitHub 网页后台配好的两个加密变量
