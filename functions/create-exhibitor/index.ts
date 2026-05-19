@@ -185,44 +185,82 @@ Deno.serve(async (req) => {
         if (existingAuthUser) {
           const userId = existingAuthUser.id;
 
-          // 创建 profile
+          // 更新或创建 profile
           const { error: profileError } = await supabaseAdmin
             .from('profiles')
-            .insert({
+            .upsert({
               id: userId,
               username: username,
               display_name: displayName,
               role: role,
               phone: phone,
-            });
+            }, { onConflict: 'id' });
 
           if (profileError) {
-            results.errors.push(`创建用户资料失败: ${username} - ${profileError.message}`);
+            results.errors.push(`更新用户资料失败: ${username} - ${profileError.message}`);
             results.failed++;
             continue;
           }
 
-          // 创建展位信息
-          const { error: boothError } = await supabaseAdmin
+          // 检查是否已有展位记录
+          const { data: existingBooth, error: boothCheckError } = await supabaseAdmin
             .from('exhibitor_booths')
-            .insert({
-              user_id: userId,
-              exhibitor_name: exhibitorName,
-              hall_number: hallNumber,
-              booth_number: boothNumber,
-              booth_area: boothArea,
-              booth_height: boothHeight,
-              booth_category: boothCategory,
-              contact_name: contactName,
-              contact_phone: phone,
-              email: email,
-            });
+            .select('id')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-          if (boothError) {
-            results.errors.push(`创建展位失败: ${username} - ${boothError.message}`);
+          if (boothCheckError && boothCheckError.code !== 'PGRST116') {
+            results.errors.push(`检查展位信息失败: ${username} - ${boothCheckError.message}`);
             results.failed++;
+            continue;
+          }
+
+          // 如果已有展位记录，更新；否则创建
+          if (existingBooth) {
+            const { error: boothUpdateError } = await supabaseAdmin
+              .from('exhibitor_booths')
+              .update({
+                exhibitor_name: exhibitorName,
+                hall_number: hallNumber,
+                booth_number: boothNumber,
+                booth_area: boothArea,
+                booth_height: boothHeight,
+                booth_category: boothCategory,
+                contact_name: contactName,
+                contact_phone: phone,
+                email: email,
+              })
+              .eq('user_id', userId);
+
+            if (boothUpdateError) {
+              results.errors.push(`更新展位信息失败: ${username} - ${boothUpdateError.message}`);
+              results.failed++;
+            } else {
+              results.updated++;
+            }
           } else {
-            results.added++;
+            // 创建展位信息
+            const { error: boothError } = await supabaseAdmin
+              .from('exhibitor_booths')
+              .insert({
+                user_id: userId,
+                exhibitor_name: exhibitorName,
+                hall_number: hallNumber,
+                booth_number: boothNumber,
+                booth_area: boothArea,
+                booth_height: boothHeight,
+                booth_category: boothCategory,
+                contact_name: contactName,
+                contact_phone: phone,
+                email: email,
+              });
+
+            if (boothError) {
+              results.errors.push(`创建展位信息失败: ${username} - ${boothError.message}`);
+              results.failed++;
+            } else {
+              results.added++;
+            }
           }
           continue;
         }
@@ -249,13 +287,13 @@ Deno.serve(async (req) => {
         // 创建 profile 记录
         const { error: profileError } = await supabaseAdmin
           .from('profiles')
-          .insert({
+          .upsert({
             id: authData.user.id,
             username: username,
             display_name: displayName,
             role: role,
             phone: phone,
-          });
+          }, { onConflict: 'id' });
 
         if (profileError) {
           results.errors.push(`创建用户资料失败: ${username} - ${profileError.message}`);

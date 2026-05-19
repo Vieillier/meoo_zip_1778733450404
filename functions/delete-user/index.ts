@@ -37,7 +37,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. 删除展位信息
+    // 1. 先删除 auth.users 中的用户（使用 admin API）
+    // 如果这一步失败，就不删除其他数据
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+    if (authError) {
+      console.error('Delete auth user error:', authError);
+      return new Response(JSON.stringify({ error: '删除用户失败: ' + authError.message }), {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
+
+    // 2. 删除展位信息
     const { error: boothError } = await supabaseAdmin
       .from('exhibitor_booths')
       .delete()
@@ -45,9 +57,10 @@ Deno.serve(async (req) => {
 
     if (boothError) {
       console.error('Delete booth error:', boothError);
+      // 不返回错误，因为 auth 用户已经删除了
     }
 
-    // 2. 删除用户资料
+    // 3. 删除用户资料
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .delete()
@@ -55,25 +68,24 @@ Deno.serve(async (req) => {
 
     if (profileError) {
       console.error('Delete profile error:', profileError);
-    }
-
-    // 3. 删除 auth.users 中的用户（使用 admin API）
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-
-    if (authError) {
-      return new Response(JSON.stringify({ error: authError.message }), {
-        status: 500,
-        headers: corsHeaders,
-      });
+      // 不返回错误，因为 auth 用户已经删除了
     }
 
     return new Response(JSON.stringify({ success: true, message: 'User deleted successfully' }), {
-      headers: corsHeaders,
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
     });
   } catch (error: any) {
+    console.error('Cloud function error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: corsHeaders,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
     });
   }
 });

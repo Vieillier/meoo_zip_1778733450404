@@ -1231,6 +1231,7 @@ function ExcelImportModal({
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 sticky top-0">
                     <tr>
+                      <th className="px-3 py-2 text-left font-medium text-gray-700">操作</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-700">状态</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-700">账号</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-700">密码</th>
@@ -1248,6 +1249,15 @@ function ExcelImportModal({
                   <tbody className="divide-y divide-gray-200">
                     {parsedData.map((item, idx) => (
                       <tr key={idx} className={`hover:bg-gray-50 ${item.isExisting ? 'bg-orange-50' : ''}`}>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <button
+                            onClick={() => setParsedData(parsedData.filter((_, i) => i !== idx))}
+                            className="text-red-600 hover:text-red-800 transition-colors"
+                            title="删除此行"
+                          >
+                            <i className="fas fa-trash-alt"></i>
+                          </button>
+                        </td>
                         <td className="px-3 py-2">
                           {item.isExisting ? (
                             <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-orange-100 text-orange-700">
@@ -1557,7 +1567,7 @@ function UserManagementPage() {
         }, { onConflict: 'id' });
 
         try {
-          await supabase.from('exhibitor_booths').insert({
+          await supabase.from('exhibitor_booths').upsert({
             user_id: authData.user.id,
             exhibitor_name: newUser.exhibitorName || newUser.displayName,
             hall_number: newUser.hallNumber,
@@ -1568,7 +1578,7 @@ function UserManagementPage() {
             contact_name: newUser.displayName,
             contact_phone: newUser.phone,
             email: newUser.email
-          });
+          }, { onConflict: 'user_id' });
         } catch (boothInsertError: any) {
           console.error('Failed to insert exhibitor_booths record for new user:', boothInsertError);
           alert('创建用户成功，但写入展位信息失败，请联系管理员。');
@@ -1589,7 +1599,7 @@ function UserManagementPage() {
         }
 
         try {
-          await supabase.from('exhibitor_booths').insert({
+          await supabase.from('exhibitor_booths').upsert({
             user_id: profileRecord.id,
             exhibitor_name: newUser.exhibitorName || newUser.displayName,
             hall_number: newUser.hallNumber,
@@ -1600,7 +1610,7 @@ function UserManagementPage() {
             contact_name: newUser.displayName,
             contact_phone: newUser.phone,
             email: newUser.email
-          });
+          }, { onConflict: 'user_id' });
         } catch (boothInsertError: any) {
           console.error('Failed to insert exhibitor_booths record for resolved new user:', boothInsertError);
           alert('创建用户成功，但写入展位信息失败，请联系管理员。');
@@ -1608,7 +1618,8 @@ function UserManagementPage() {
         }
       }
 
-      createUser({ ...newUser, role });
+      // 刷新账户列表
+      await refreshAccounts();
       setShowAddModal(false);
       setNewUser({
         username: '',
@@ -1624,7 +1635,9 @@ function UserManagementPage() {
         boothHeight: 4,
         boothCategory: '标摊'
       });
+      alert('用户创建成功');
     } catch (error) {
+      console.error('创建用户异常:', error);
       alert('创建用户失败');
     }
   };
@@ -1634,53 +1647,74 @@ function UserManagementPage() {
 
     try {
       const { supabase } = await import('./supabase/client');
+      const { data: { session } } = await supabase.auth.getSession();
 
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          display_name: editingUser.displayName,
-          phone: editingUser.phone
-        })
-        .eq('id', editingUser.id);
-
-      if (profileError) {
-        alert('更新用户信息失败: ' + profileError.message);
+      if (!session?.access_token) {
+        alert('会话已过期，请重新登录');
         return;
       }
 
-      const { error: boothError } = await supabase
-        .from('exhibitor_booths')
-        .update({
-          exhibitor_name: editingUser.exhibitorName,
-          hall_number: editingUser.hallNumber,
-          booth_number: editingUser.boothNumber,
-          booth_area: editingUser.boothArea,
-          booth_height: editingUser.boothHeight,
-          booth_category: editingUser.boothCategory,
-          contact_phone: editingUser.phone,
+      // 调用云函数更新用户信息
+      const { data: invokeResult, error: invokeError } = await supabase.functions.invoke('update-exhibitor', {
+        body: JSON.stringify({
+          userId: editingUser.id,
+          displayName: editingUser.displayName,
+          phone: editingUser.phone,
+          exhibitorName: editingUser.exhibitorName,
+          hallNumber: editingUser.hallNumber,
+          boothNumber: editingUser.boothNumber,
+          boothArea: editingUser.boothArea,
+          boothHeight: editingUser.boothHeight,
+          boothCategory: editingUser.boothCategory,
           email: editingUser.email
-        })
-        .eq('user_id', editingUser.id);
+        }),
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
-      if (boothError) {
-        alert('更新展位信息失败: ' + boothError.message);
+      if (invokeError) {
+        console.error('[Edit] 云函数调用错误:', invokeError);
+        alert('更新失败: ' + (invokeError?.message || '未知错误'));
         return;
       }
 
-      editUser(editingUser);
+      if (!invokeResult?.success) {
+        alert('更新失败: ' + (invokeResult?.error || '未知错误'));
+        return;
+      }
+
+      await refreshAccounts();
       setShowEditModal(false);
       setEditingUser(null);
       alert('用户信息已更新');
     } catch (error: any) {
+      console.error('[Edit] 更新失败:', error);
       alert('更新失败: ' + error.message);
     }
   };
 
-  const handleResetPassword = (username: string) => {
+  const handleResetPassword = async (username: string) => {
     const newPassword = prompt('请输入新密码:');
-    if (newPassword) {
-      updateUserPassword(username, newPassword);
-      alert('密码已重置');
+    if (!newPassword) {
+      return;
+    }
+
+    try {
+      // 应用系统密码规则：< 6位自动添加 _secure 后缀，>= 6位保持原密码
+      const normalizedPassword = newPassword.length < 6 ? `${newPassword}_secure` : newPassword;
+
+      const success = await updateUserPassword(username, normalizedPassword);
+      if (success) {
+        const message = newPassword.length < 6
+          ? `密码已重置成功（原密码: ${newPassword} → 实际密码: ${normalizedPassword}）`
+          : '密码已重置成功';
+        alert(message);
+      } else {
+        alert('密码重置失败，请重试');
+      }
+    } catch (error: any) {
+      alert('密码重置出错: ' + error.message);
     }
   };
 
@@ -1697,12 +1731,14 @@ function UserManagementPage() {
         body: JSON.stringify({ userId: id })
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        const result = await response.json();
         throw new Error(result.error || '删除失败');
       }
 
-      removeUser(id);
+      // 删除成功，刷新账户列表
+      await refreshAccounts();
       alert('用户已删除');
     } catch (error: any) {
       alert('删除失败: ' + error.message);
