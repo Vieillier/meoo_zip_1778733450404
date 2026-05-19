@@ -59,11 +59,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 使用 service role 权限查询所有展商数据
+    // 使用 service role 权限查询所有展商数据和审图员数据
     const { data: profiles, error: profileError } = await supabaseUser
       .from('profiles')
       .select('*')
-      .in('role', ['standard_exhibitor', 'custom_exhibitor']);
+      .in('role', ['standard_exhibitor', 'custom_exhibitor', 'reviewer']);
 
     if (profileError) {
       console.error('Failed to fetch profiles:', profileError);

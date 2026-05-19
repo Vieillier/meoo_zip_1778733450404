@@ -1503,17 +1503,22 @@ function FilterDropdown({
 }
 
 type ReviewerTab = 'users' | 'applications' | 'meiban' | 'customReview';
+type UserManagementSubTab = 'exhibitors' | 'reviewers';
 
 function UserManagementPage() {
   const { user, accounts, logout, updateUserPassword, createUser, removeUser, editUser, importUsers, refreshAccounts, isPreviewMode, exitPreviewMode } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ReviewerTab>('users');
+  const [userManagementTab, setUserManagementTab] = useState<UserManagementSubTab>('exhibitors');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showAddReviewerModal, setShowAddReviewerModal] = useState(false);
+  const [showEditReviewerModal, setShowEditReviewerModal] = useState(false);
   const [importData, setImportData] = useState('');
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [editingReviewer, setEditingReviewer] = useState<{ id: string; username: string; displayName: string; password: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     exhibitorName: '',
     hallNumber: '',
@@ -1534,6 +1539,11 @@ function UserManagementPage() {
     boothArea: 9,
     boothHeight: 4,
     boothCategory: '标摊' as '标摊' | '特装'
+  });
+  const [newReviewer, setNewReviewer] = useState({
+    username: '',
+    password: '',
+    displayName: ''
   });
 
   const tabs = [
@@ -1810,6 +1820,125 @@ function UserManagementPage() {
     }
   };
 
+  // 新增审图员
+  const handleAddReviewer = async () => {
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
+    if (!newReviewer.username || !newReviewer.password || !newReviewer.displayName) {
+      alert('请填写所有必填项');
+      return;
+    }
+
+    try {
+      const { supabase } = await import('./supabase/client');
+      const email = generateVirtualEmail(newReviewer.username);
+      const normalizedPassword = normalizeExhibitorPassword(newReviewer.password);
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password: normalizedPassword,
+        options: {
+          data: {
+            username: newReviewer.username,
+            display_name: newReviewer.displayName,
+            role: 'reviewer'
+          }
+        }
+      });
+
+      if (authError) {
+        alert('创建审图员失败: ' + authError.message);
+        return;
+      }
+
+      if (authData.user) {
+        await supabase.from('profiles').upsert({
+          id: authData.user.id,
+          username: newReviewer.username,
+          display_name: newReviewer.displayName,
+          role: 'reviewer'
+        }, { onConflict: 'id' });
+      }
+
+      await refreshAccounts();
+      setShowAddReviewerModal(false);
+      setNewReviewer({ username: '', password: '', displayName: '' });
+      alert('审图员创建成功');
+    } catch (error: any) {
+      alert('创建审图员失败: ' + error.message);
+    }
+  };
+
+  // 编辑审图员
+  const handleEditReviewer = async () => {
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
+    if (!editingReviewer) return;
+
+    try {
+      const { supabase } = await import('./supabase/client');
+
+      // 更新 profiles 表
+      await supabase.from('profiles').update({
+        username: editingReviewer.username,
+        display_name: editingReviewer.displayName
+      }).eq('id', editingReviewer.id);
+
+      // 如果密码有变化，更新密码
+      if (editingReviewer.password) {
+        const normalizedPassword = normalizeExhibitorPassword(editingReviewer.password);
+        await supabase.auth.admin.updateUserById(editingReviewer.id, {
+          password: normalizedPassword
+        });
+      }
+
+      await refreshAccounts();
+      setShowEditReviewerModal(false);
+      setEditingReviewer(null);
+      alert('审图员信息已更新');
+    } catch (error: any) {
+      alert('更新失败: ' + error.message);
+    }
+  };
+
+  // 删除审图员
+  const handleDeleteReviewer = async (id: string) => {
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
+    if (!confirm('确定要删除此审图员吗?')) return;
+
+    const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+    const headers = await getAuthHeaders();
+
+    try {
+      const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ userId: id })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '删除失败');
+      }
+
+      await refreshAccounts();
+      alert('审图员已删除');
+    } catch (error: any) {
+      alert('删除失败: ' + error.message);
+    }
+  };
+
   const handleImport = async () => {
     try {
       const lines = importData.trim().split('\n');
@@ -1945,20 +2074,50 @@ function UserManagementPage() {
           >
             <h2 className="text-xl font-bold text-gray-800 mb-6">用户管理</h2>
 
-            <div className="mb-6 flex gap-4">
+            {/* 子标签页切换 */}
+            <div className="mb-6 flex gap-2 border-b border-gray-200">
               <button
-                onClick={() => setShowAddModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={() => setUserManagementTab('exhibitors')}
+                className={`px-6 py-3 font-medium transition-colors ${
+                  userManagementTab === 'exhibitors'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
               >
-                新增用户
+                展商列表
               </button>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                导入展商表格
-              </button>
+              {/* 只有管理员可以看到审图员列表标签 */}
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => setUserManagementTab('reviewers')}
+                  className={`px-6 py-3 font-medium transition-colors ${
+                    userManagementTab === 'reviewers'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  审图员列表
+                </button>
+              )}
             </div>
+
+            {/* 展商列表 */}
+            {userManagementTab === 'exhibitors' && (
+              <>
+                <div className="mb-6 flex gap-4">
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    新增用户
+                  </button>
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    导入展商表格
+                  </button>
+                </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1200px]">
@@ -2055,6 +2214,64 @@ function UserManagementPage() {
             </tbody>
           </table>
         </div>
+              </>
+            )}
+
+            {/* 审图员列表 - 只有管理员可以看到 */}
+            {userManagementTab === 'reviewers' && user?.role === 'admin' && (
+              <>
+                <div className="mb-6 flex gap-4">
+                  <button
+                    onClick={() => setShowAddReviewerModal(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    新增审图员
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">账号</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">显示名称</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {accounts.filter(a => a.role === 'reviewer').map((reviewer) => (
+                        <tr key={reviewer.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">{reviewer.username}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{reviewer.displayName}</td>
+                          <td className="px-4 py-3 text-sm space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingReviewer({
+                                  id: reviewer.id,
+                                  username: reviewer.username,
+                                  displayName: reviewer.displayName,
+                                  password: ''
+                                });
+                                setShowEditReviewerModal(true);
+                              }}
+                              className="text-green-600 hover:text-green-800"
+                            >
+                              编辑
+                            </button>
+                            <button
+                              onClick={() => handleDeleteReviewer(reviewer.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              删除
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
         <AnimatePresence>
           {showAddModal && (
@@ -2259,6 +2476,118 @@ function UserManagementPage() {
                   </button>
                   <button
                     onClick={() => setShowEditModal(false)}
+                    className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                  >
+                    取消
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* 新增审图员弹窗 */}
+          {showAddReviewerModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md"
+              >
+                <h2 className="text-xl font-bold mb-4">新增审图员</h2>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="账号"
+                    value={newReviewer.username}
+                    onChange={(e) => setNewReviewer({ ...newReviewer, username: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="密码（小于6位自动添加_secure后缀）"
+                    value={newReviewer.password}
+                    onChange={(e) => setNewReviewer({ ...newReviewer, password: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="显示名称"
+                    value={newReviewer.displayName}
+                    onChange={(e) => setNewReviewer({ ...newReviewer, displayName: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div className="flex gap-4 mt-6">
+                  <button
+                    onClick={handleAddReviewer}
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    确认
+                  </button>
+                  <button
+                    onClick={() => setShowAddReviewerModal(false)}
+                    className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                  >
+                    取消
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* 编辑审图员弹窗 */}
+          {showEditReviewerModal && editingReviewer && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md"
+              >
+                <h2 className="text-xl font-bold mb-4">编辑审图员</h2>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="账号"
+                    value={editingReviewer.username}
+                    onChange={(e) => setEditingReviewer({ ...editingReviewer, username: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="新密码（留空则不修改）"
+                    value={editingReviewer.password}
+                    onChange={(e) => setEditingReviewer({ ...editingReviewer, password: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="显示名称"
+                    value={editingReviewer.displayName}
+                    onChange={(e) => setEditingReviewer({ ...editingReviewer, displayName: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div className="flex gap-4 mt-6">
+                  <button
+                    onClick={handleEditReviewer}
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    确认
+                  </button>
+                  <button
+                    onClick={() => setShowEditReviewerModal(false)}
                     className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
                   >
                     取消
