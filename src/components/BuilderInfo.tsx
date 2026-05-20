@@ -79,23 +79,36 @@ export default function BuilderInfo({ boothNumber, isPreviewMode = false }: Buil
         .select('id')
         .eq('booth_number', boothNumber)
         .maybeSingle();
+
       if (existing) {
-        await supabase.from('builder_info').update({
-          ...builderInfo,
-          updated_at: new Date().toISOString()
-        }).eq('id', existing.id);
+        const { error: updateError } = await supabase
+          .from('builder_info')
+          .update({
+            ...builderInfo,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+
+        if (updateError) throw updateError;
       } else {
-        await supabase.from('builder_info').insert({
-          ...builderInfo,
-          booth_number: boothNumber
-        });
+        const { error: insertError } = await supabase
+          .from('builder_info')
+          .insert({
+            ...builderInfo,
+            booth_number: boothNumber
+          });
+
+        if (insertError) throw insertError;
       }
+
       setIsLocked(true);
+      setSaving(false);
       alert('搭建商信息已保存');
     } catch (error) {
-      alert('保存失败');
+      console.error('保存搭建商信息失败:', error);
+      setSaving(false);
+      alert('保存失败: ' + (error instanceof Error ? error.message : '未知错误'));
     }
-    setSaving(false);
   };
 
   const handleEdit = () => {
