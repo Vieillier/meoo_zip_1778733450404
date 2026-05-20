@@ -1000,6 +1000,11 @@ function ExcelImportModal({
         updated.boothCategory = height > 4 ? '特装' : '标摊';
         updated.role = height > 4 ? 'custom_exhibitor' : 'standard_exhibitor';
       }
+      if (field === 'boothCategory') {
+        const category = String(value) as '标摊' | '特装';
+        updated.boothCategory = category;
+        updated.role = category === '特装' ? 'custom_exhibitor' : 'standard_exhibitor';
+      }
       return updated;
     }));
   };
@@ -1336,13 +1341,14 @@ function ExcelImportModal({
                           />
                         </td>
                         <td className="px-3 py-2">
-                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${
-                            item.boothCategory === '特装'
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-green-100 text-green-700'
-                          }`}>
-                            {item.boothCategory || '标摊'}
-                          </span>
+                          <select
+                            value={item.boothCategory || '标摊'}
+                            onChange={(e) => updatePreviewData(idx, 'boothCategory', e.target.value)}
+                            className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="标摊">标摊</option>
+                            <option value="特装">特装</option>
+                          </select>
                         </td>
                         <td className="px-2 py-1">
                           <input

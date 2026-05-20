@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../supabase/client';
 import QualificationReview from './QualificationReview';
 import DrawingReview from './DrawingReview';
-import { Document, Paragraph, TextRun, Packer, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 
@@ -51,6 +50,9 @@ export default function CustomBoothReview() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showQualificationModal, setShowQualificationModal] = useState(false);
   const [showDrawingModal, setShowDrawingModal] = useState(false);
+  const [hallNumberDropdown, setHallNumberDropdown] = useState(false);
+  const [heightTypeDropdown, setHeightTypeDropdown] = useState(false);
+  const [submitTimeDropdown, setSubmitTimeDropdown] = useState(false);
 
   const fetchCustomBooths = async () => {
     setLoading(true);
@@ -78,7 +80,7 @@ export default function CustomBoothReview() {
       // 获取图纸提交时间
       const { data: drawingDocsData } = await supabase
         .from('drawing_documents')
-        .select('booth_number, last_reviewed_at')
+        .select('booth_number, submitted_at')
         .in('booth_number', boothNumbers);
 
       const mergedData = boothsData?.map(booth => {
@@ -93,7 +95,7 @@ export default function CustomBoothReview() {
           builder_contact_name: builderInfo?.contact_name || '',
           builder_contact_phone: builderInfo?.contact_phone || '',
           builder_contact_email: builderInfo?.contact_email || '',
-          submitted_at: drawingDoc?.last_reviewed_at || null
+          submitted_at: drawingDoc?.submitted_at || null
         };
       });
 
@@ -162,101 +164,6 @@ export default function CustomBoothReview() {
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     return `${year}-${month}-${day} ${hours}:${minutes}`;
-  };
-
-  const generateReviewCertificate = async (booth: BoothRecord) => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
-    const day = today.getDate();
-    const dateStr = `${year}年${month}月${day}日`;
-    const validStart = `${year}年${month}月${day}日`;
-    const validEnd = `${year}年${month + 3}月${day}日`;
-
-    const doc = new Document({
-      sections: [{
-        properties: {
-          page: {
-            margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
-          }
-        },
-        children: [
-          new Paragraph({
-            text: 'XXX结构审核意见书',
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 400 },
-            children: [
-              new TextRun({
-                text: 'XXX结构审核意见书',
-                bold: true,
-                size: 36
-              })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 200 },
-            children: [
-              new TextRun({ text: '参展商：', size: 24 }),
-              new TextRun({ text: booth.exhibitor_name || '', size: 24 })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 200 },
-            children: [
-              new TextRun({ text: '展位号：', size: 24 }),
-              new TextRun({ text: booth.booth_number || '', size: 24 })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 200 },
-            children: [
-              new TextRun({ text: '搭建商：', size: 24 }),
-              new TextRun({ text: booth.builder_name || '', size: 24 })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 200 },
-            children: [
-              new TextRun({ text: '展台类型：□室内     □室外      □单层      双层', size: 24 })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 300 },
-            children: [
-              new TextRun({
-                text: `该展台提供的终版审核资料（设计图纸、说明文案等）经具备中华人民共和国一级注册结构工程师资质的人员审核，各项结构数据均符合相关结构设计标准及大会相关要求。请严格依照审核后的图纸及相关设计要求完成搭建工作。在搭建过程中若发现结构安全性问题或与审核资料不符的情况，我司有权停止施工，并提出整改意见。`,
-                size: 22
-              })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 400 },
-            children: [
-              new TextRun({
-                text: `该审核意见书有效期：${validStart}至${validEnd}。`,
-                size: 22
-              })
-            ]
-          }),
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            spacing: { before: 600, after: 100 },
-            children: [
-              new TextRun({ text: '审图公司盖章', size: 24 })
-            ]
-          }),
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-              new TextRun({ text: dateStr, size: 24 })
-            ]
-          })
-        ]
-      }]
-    });
-
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, `审图通过证_${booth.booth_number}_${booth.exhibitor_name}.docx`);
   };
 
   const downloadAllDrawings = async () => {
@@ -395,21 +302,7 @@ export default function CustomBoothReview() {
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-xl font-bold text-gray-800 mb-4">特装展位审图</h2>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">展馆号</label>
-            <select
-              value={filters.hallNumber}
-              onChange={(e) => setFilters({ ...filters, hallNumber: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">全部</option>
-              {uniqueHallNumbers.map(hall => (
-                <option key={hall} value={hall}>{hall}</option>
-              ))}
-            </select>
-          </div>
-
+        <div className="grid grid-cols-2 md:grid-cols-2 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">展位号</label>
             <input
@@ -430,32 +323,6 @@ export default function CustomBoothReview() {
               placeholder="搜索展商..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">展位高度类型</label>
-            <select
-              value={filters.heightType}
-              onChange={(e) => setFilters({ ...filters, heightType: e.target.value as '' | '不超高' | '超高' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">全部</option>
-              <option value="不超高">不超高（&lt;4.5米）</option>
-              <option value="超高">超高（&ge;4.5米）</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">提交时间排序</label>
-            <select
-              value={filters.sortByTime}
-              onChange={(e) => setFilters({ ...filters, sortByTime: e.target.value as '' | 'asc' | 'desc' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">默认</option>
-              <option value="desc">时间倒序（最新在前）</option>
-              <option value="asc">时间顺序（最早在前）</option>
-            </select>
           </div>
         </div>
 
@@ -492,12 +359,138 @@ export default function CustomBoothReview() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">展馆号</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 relative">
+                    <div className="flex items-center gap-2">
+                      展馆号
+                      <div className="relative">
+                        <button
+                          onClick={() => setHallNumberDropdown(!hallNumberDropdown)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors"
+                          title="筛选展馆号"
+                        >
+                          <i className="fas fa-chevron-down text-xs"></i>
+                        </button>
+                        {hallNumberDropdown && (
+                          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 min-w-max">
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, hallNumber: '' });
+                                setHallNumberDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg"
+                            >
+                              全部
+                            </button>
+                            {uniqueHallNumbers.map(hall => (
+                              <button
+                                key={hall}
+                                onClick={() => {
+                                  setFilters({ ...filters, hallNumber: hall });
+                                  setHallNumberDropdown(false);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 last:rounded-b-lg"
+                              >
+                                {hall}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">展位号</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">展商名称</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">展位面积</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">高度类型</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">提交时间</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 relative">
+                    <div className="flex items-center gap-2">
+                      高度类型
+                      <div className="relative">
+                        <button
+                          onClick={() => setHeightTypeDropdown(!heightTypeDropdown)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors"
+                          title="筛选高度类型"
+                        >
+                          <i className="fas fa-chevron-down text-xs"></i>
+                        </button>
+                        {heightTypeDropdown && (
+                          <div className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 min-w-max">
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, heightType: '' });
+                                setHeightTypeDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg"
+                            >
+                              全部
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, heightType: '不超高' });
+                                setHeightTypeDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              不超高（&lt;4.5米）
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, heightType: '超高' });
+                                setHeightTypeDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 last:rounded-b-lg"
+                            >
+                              超高（&ge;4.5米）
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 relative">
+                    <div className="flex items-center gap-2">
+                      提交时间
+                      <div className="relative">
+                        <button
+                          onClick={() => setSubmitTimeDropdown(!submitTimeDropdown)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors"
+                          title="筛选提交时间"
+                        >
+                          <i className="fas fa-chevron-down text-xs"></i>
+                        </button>
+                        {submitTimeDropdown && (
+                          <div className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 min-w-max">
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, sortByTime: '' });
+                                setSubmitTimeDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg"
+                            >
+                              默认
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, sortByTime: 'desc' });
+                                setSubmitTimeDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              时间倒序（最新在前）
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFilters({ ...filters, sortByTime: 'asc' });
+                                setSubmitTimeDropdown(false);
+                              }}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 last:rounded-b-lg"
+                            >
+                              时间顺序（最早在前）
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系人</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系电话</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
@@ -531,31 +524,27 @@ export default function CustomBoothReview() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">{booth.contact_name || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-900">{booth.contact_phone || '-'}</td>
-                      <td className="px-4 py-3 text-sm space-x-2">
-                        <button
-                          onClick={() => { setSelectedBooth(booth); setShowDetailModal(true); }}
-                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
-                        >
-                          查看详情
-                        </button>
-                        <button
-                          onClick={() => { setSelectedBooth(booth); setShowQualificationModal(true); }}
-                          className="px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 transition-colors"
-                        >
-                          资质审核
-                        </button>
-                        <button
-                          onClick={() => { setSelectedBooth(booth); setShowDrawingModal(true); }}
-                          className="px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 transition-colors"
-                        >
-                          图纸审核
-                        </button>
-                        <button
-                          onClick={() => generateReviewCertificate(booth)}
-                          className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors"
-                        >
-                          下载审图通过证
-                        </button>
+                      <td className="px-4 py-3 text-sm space-y-2">
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => { setSelectedBooth(booth); setShowDetailModal(true); }}
+                            className="w-full px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors whitespace-nowrap"
+                          >
+                            查看详情
+                          </button>
+                          <button
+                            onClick={() => { setSelectedBooth(booth); setShowQualificationModal(true); }}
+                            className="w-full px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 transition-colors whitespace-nowrap"
+                          >
+                            资质审核
+                          </button>
+                          <button
+                            onClick={() => { setSelectedBooth(booth); setShowDrawingModal(true); }}
+                            className="w-full px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 transition-colors whitespace-nowrap"
+                          >
+                            图纸审核
+                          </button>
+                        </div>
                       </td>
                     </motion.tr>
                   );

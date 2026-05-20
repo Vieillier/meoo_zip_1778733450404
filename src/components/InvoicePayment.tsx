@@ -38,6 +38,7 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hasSavedData, setHasSavedData] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const fetchInvoiceInfo = async () => {
     setLoading(true);
@@ -122,8 +123,13 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
     }
     setSaving(false);
     setHasSavedData(true);
+    setIsEditMode(false);
     localStorage.removeItem(`${STORAGE_KEY}_${boothNumber}`);
     alert('开票信息已保存');
+  };
+
+  const handleEnableEditMode = () => {
+    setIsEditMode(true);
   };
 
   const isImageFile = (file: File) => {
@@ -241,7 +247,16 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
         animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-xl shadow-sm p-6"
       >
-        <h3 className="text-lg font-bold text-gray-800 mb-4">开票信息</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-gray-800">开票信息</h3>
+          <div className="flex items-center gap-3">
+            {hasSavedData && !isEditMode && (
+              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                <i className="fas fa-check-circle mr-1"></i>已保存
+              </span>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">名称</label>
@@ -249,7 +264,8 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
               type="text"
               value={invoiceInfo.company_name}
               onChange={(e) => setInvoiceInfo({ ...invoiceInfo, company_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={hasSavedData && !isEditMode}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="请输入公司名称"
             />
           </div>
@@ -259,7 +275,8 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
               type="text"
               value={invoiceInfo.tax_id}
               onChange={(e) => setInvoiceInfo({ ...invoiceInfo, tax_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={hasSavedData && !isEditMode}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="请输入纳税人识别号"
             />
           </div>
@@ -269,7 +286,8 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
               type="text"
               value={invoiceInfo.address}
               onChange={(e) => setInvoiceInfo({ ...invoiceInfo, address: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={hasSavedData && !isEditMode}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="请输入地址"
             />
           </div>
@@ -279,7 +297,8 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
               type="text"
               value={invoiceInfo.phone}
               onChange={(e) => setInvoiceInfo({ ...invoiceInfo, phone: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={hasSavedData && !isEditMode}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="请输入电话"
             />
           </div>
@@ -289,7 +308,8 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
               type="text"
               value={invoiceInfo.bank_name}
               onChange={(e) => setInvoiceInfo({ ...invoiceInfo, bank_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={hasSavedData && !isEditMode}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="请输入开户行"
             />
           </div>
@@ -299,18 +319,41 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
               type="text"
               value={invoiceInfo.bank_account}
               onChange={(e) => setInvoiceInfo({ ...invoiceInfo, bank_account: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={hasSavedData && !isEditMode}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="请输入银行账号"
             />
           </div>
         </div>
-        <button
-          onClick={handleSubmitInvoice}
-          disabled={saving || isPreviewMode}
-          className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-        >
-          {isPreviewMode ? '预览模式不可提交' : (saving ? '保存中...' : '提交')}
-        </button>
+        <div className="mt-4 flex gap-2">
+          {!hasSavedData || isEditMode ? (
+            <>
+              <button
+                onClick={handleSubmitInvoice}
+                disabled={saving || isPreviewMode}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {isPreviewMode ? '预览模式不可提交' : (saving ? '保存中...' : '确认提交')}
+              </button>
+              {hasSavedData && isEditMode && (
+                <button
+                  onClick={() => setIsEditMode(false)}
+                  className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                >
+                  取消
+                </button>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={handleEnableEditMode}
+              disabled={isPreviewMode}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              修改
+            </button>
+          )}
+        </div>
       </motion.div>
 
       <motion.div

@@ -296,7 +296,11 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
   const canEditDoc = (docKey: string) => {
     if (isPreviewMode) return false;
     if (!isSubmitted) return true;
-    if (isEditMode && reviewState[getStatusKey(docKey)] === 'rejected') return true;
+    // 在整改模式下，允许编辑所有未通过的图纸（包括 pending 和 rejected）
+    if (isEditMode) {
+      const status = reviewState[getStatusKey(docKey)];
+      return status !== 'approved';
+    }
     return false;
   };
   const getHistoryForDoc = (docKey: string) => history.filter(h => h.drawing_type === docKey);
