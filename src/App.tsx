@@ -1519,6 +1519,7 @@ function UserManagementPage() {
   const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [editingReviewer, setEditingReviewer] = useState<{ id: string; username: string; displayName: string; password: string } | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<FilterState>({
     exhibitorName: '',
     hallNumber: '',
@@ -1939,6 +1940,76 @@ function UserManagementPage() {
     }
   };
 
+  // 批量删除展商用户
+  const handleBatchDeleteUsers = async () => {
+    if (isPreviewMode) {
+      alert('预览模式下无法执行此操作');
+      return;
+    }
+
+    if (selectedUserIds.size === 0) {
+      alert('请先选择要删除的用户');
+      return;
+    }
+
+    if (!confirm(`确定要删除选中的 ${selectedUserIds.size} 个用户吗？此操作不可撤销！`)) {
+      return;
+    }
+
+    const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+    const headers = await getAuthHeaders();
+
+    try {
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const userId of selectedUserIds) {
+        try {
+          const response = await fetch(`${getSupabaseUrl()}/functions/v1/delete-user`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ userId })
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          failCount++;
+        }
+      }
+
+      await refreshAccounts();
+      setSelectedUserIds(new Set());
+      alert(`删除完成！成功删除 ${successCount} 个用户${failCount > 0 ? `，失败 ${failCount} 个` : ''}`);
+    } catch (error: any) {
+      alert('批量删除失败: ' + error.message);
+    }
+  };
+
+  // 切换用户选中状态
+  const toggleUserSelection = (userId: string) => {
+    const newSelected = new Set(selectedUserIds);
+    if (newSelected.has(userId)) {
+      newSelected.delete(userId);
+    } else {
+      newSelected.add(userId);
+    }
+    setSelectedUserIds(newSelected);
+  };
+
+  // 全选/取消全选展商用户
+  const toggleSelectAllUsers = () => {
+    const exhibitorAccounts = filteredAccounts.filter(a => a.role !== 'reviewer');
+    if (selectedUserIds.size === exhibitorAccounts.length) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(exhibitorAccounts.map(a => a.id)));
+    }
+  };
+
   const handleImport = async () => {
     try {
       const lines = importData.trim().split('\n');
@@ -2117,12 +2188,28 @@ function UserManagementPage() {
                   >
                     导入展商表格
                   </button>
+                  {selectedUserIds.size > 0 && (
+                    <button
+                      onClick={handleBatchDeleteUsers}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      批量删除 ({selectedUserIds.size})
+                    </button>
+                  )}
                 </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1200px]">
             <thead className="bg-gray-100">
               <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 w-12">
+                  <input
+                    type="checkbox"
+                    checked={selectedUserIds.size > 0 && selectedUserIds.size === filteredAccounts.filter(a => a.role !== 'reviewer').length}
+                    onChange={toggleSelectAllUsers}
+                    className="rounded"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">账号</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">密码</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系人姓名</th>
@@ -2167,7 +2254,15 @@ function UserManagementPage() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredAccounts.filter(a => a.role !== 'reviewer').map((account) => (
-                <tr key={account.id} className="hover:bg-gray-50">
+                <tr key={account.id} className={`hover:bg-gray-50 ${selectedUserIds.has(account.id) ? 'bg-blue-50' : ''}`}>
+                  <td className="px-4 py-3 text-sm w-12">
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.has(account.id)}
+                      onChange={() => toggleUserSelection(account.id)}
+                      className="rounded"
+                    />
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-900">{account.username}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{account.password}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{account.displayName}</td>
