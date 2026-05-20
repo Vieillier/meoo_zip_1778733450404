@@ -26,7 +26,11 @@ interface BoothRecord {
   builder_contact_phone?: string;
   builder_contact_email?: string;
   submitted_at?: string | null;
+  qualification_review_status?: '待审' | '已通过' | '未通过' | '-';
+  drawing_review_status?: '待审' | '已通过' | '未通过' | '-';
 }
+
+type ReviewStatusFilter = '' | '待审' | '已通过' | '未通过' | '-';
 
 interface FilterState {
   hallNumber: string;
@@ -34,6 +38,8 @@ interface FilterState {
   exhibitorName: string;
   heightType: '' | '不超高' | '超高';
   sortByTime: '' | 'asc' | 'desc';
+  qualificationStatus: ReviewStatusFilter;
+  drawingStatus: ReviewStatusFilter;
 }
 
 export default function CustomBoothReview() {
@@ -44,7 +50,9 @@ export default function CustomBoothReview() {
     boothNumber: '',
     exhibitorName: '',
     heightType: '',
-    sortByTime: ''
+    sortByTime: '',
+    qualificationStatus: '',
+    drawingStatus: ''
   });
   const [selectedBooth, setSelectedBooth] = useState<BoothRecord | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -53,6 +61,8 @@ export default function CustomBoothReview() {
   const [hallNumberDropdown, setHallNumberDropdown] = useState(false);
   const [heightTypeDropdown, setHeightTypeDropdown] = useState(false);
   const [submitTimeDropdown, setSubmitTimeDropdown] = useState(false);
+  const [qualificationStatusDropdown, setQualificationStatusDropdown] = useState(false);
+  const [drawingStatusDropdown, setDrawingStatusDropdown] = useState(false);
 
   const fetchCustomBooths = async () => {
     setLoading(true);
@@ -74,20 +84,62 @@ export default function CustomBoothReview() {
       }
 
       // 并行查询，减少等待时间
-      const [boothInfoResult, builderInfoResult, drawingDocsResult] = await Promise.all([
+      const [boothInfoResult, builderInfoResult, drawingDocsResult, qualificationDocsResult] = await Promise.all([
         supabase.from('booth_info').select('booth_number, need_screen, screen_specification').in('booth_number', boothNumbers),
         supabase.from('builder_info').select('booth_number, builder_name, contact_name, contact_phone, contact_email').in('booth_number', boothNumbers),
-        supabase.from('drawing_documents').select('booth_number, submitted_at').in('booth_number', boothNumbers)
+        supabase.from('drawing_documents').select('booth_number, submitted_at, is_submitted, last_reviewed_at, effect_drawing_urls, effect_drawing_status, elevation_grid_drawing_status, plan_drawing_status, structure_drawing_status, material_drawing_status, electrical_system_drawing_status, utility_position_drawing_status, fire_facility_drawing_status').in('booth_number', boothNumbers),
+        supabase.from('qualification_documents').select('booth_number, is_submitted, last_reviewed_at, business_license_urls, business_license_status, application_letter_status, entrustment_letter_status, safety_responsibility_status, volume_commitment_status, violation_handling_status, insurance_policy_status, equipment_rental_status, electrician_certificate_status').in('booth_number', boothNumbers)
       ]);
 
       const boothInfoData = boothInfoResult.data;
       const builderInfoData = builderInfoResult.data;
       const drawingDocsData = drawingDocsResult.data;
+      const qualificationDocsData = qualificationDocsResult.data;
+
+      const getQualificationReviewStatus = (qualDoc: any): '待审' | '已通过' | '未通过' | '-' => {
+        if (!qualDoc) return '-';
+        // 检查是否有上传文件（至少有一个 urls 字段非空）
+        const hasUploads = qualDoc.business_license_urls?.length > 0;
+        if (!hasUploads) return '-';
+        // 所有状态字段
+        const statuses = [
+          qualDoc.business_license_status, qualDoc.application_letter_status,
+          qualDoc.entrustment_letter_status, qualDoc.safety_responsibility_status,
+          qualDoc.volume_commitment_status, qualDoc.violation_handling_status,
+          qualDoc.insurance_policy_status, qualDoc.equipment_rental_status,
+          qualDoc.electrician_certificate_status
+        ];
+        const allApproved = statuses.every(s => s === 'approved');
+        if (allApproved) return '已通过';
+        // 审图员从未提交过审核意见
+        if (!qualDoc.last_reviewed_at) return '待审';
+        return '未通过';
+      };
+
+      const getDrawingReviewStatus = (drawDoc: any): '待审' | '已通过' | '未通过' | '-' => {
+        if (!drawDoc) return '-';
+        // 检查是否有上传文件
+        const hasUploads = drawDoc.effect_drawing_urls?.length > 0;
+        if (!hasUploads) return '-';
+        // 所有状态字段
+        const statuses = [
+          drawDoc.effect_drawing_status, drawDoc.elevation_grid_drawing_status,
+          drawDoc.plan_drawing_status, drawDoc.structure_drawing_status,
+          drawDoc.material_drawing_status, drawDoc.electrical_system_drawing_status,
+          drawDoc.utility_position_drawing_status, drawDoc.fire_facility_drawing_status
+        ];
+        const allApproved = statuses.every(s => s === 'approved');
+        if (allApproved) return '已通过';
+        // 审图员从未提交过审核意见
+        if (!drawDoc.last_reviewed_at) return '待审';
+        return '未通过';
+      };
 
       const mergedData = boothsData?.map(booth => {
         const boothInfo = boothInfoData?.find(info => info.booth_number === booth.booth_number);
         const builderInfo = builderInfoData?.find(info => info.booth_number === booth.booth_number);
         const drawingDoc = drawingDocsData?.find(doc => doc.booth_number === booth.booth_number);
+        const qualificationDoc = qualificationDocsData?.find(doc => doc.booth_number === booth.booth_number);
         return {
           ...booth,
           need_screen: boothInfo?.need_screen || false,
@@ -96,7 +148,9 @@ export default function CustomBoothReview() {
           builder_contact_name: builderInfo?.contact_name || '',
           builder_contact_phone: builderInfo?.contact_phone || '',
           builder_contact_email: builderInfo?.contact_email || '',
-          submitted_at: drawingDoc?.submitted_at || null
+          submitted_at: drawingDoc?.submitted_at || null,
+          qualification_review_status: getQualificationReviewStatus(qualificationDoc),
+          drawing_review_status: getDrawingReviewStatus(drawingDoc)
         };
       });
 
@@ -124,6 +178,8 @@ export default function CustomBoothReview() {
       const heightType = getHeightType(booth.booth_height);
       if (heightType !== filters.heightType) return false;
     }
+    if (filters.qualificationStatus && booth.qualification_review_status !== filters.qualificationStatus) return false;
+    if (filters.drawingStatus && booth.drawing_review_status !== filters.drawingStatus) return false;
     return true;
   }).sort((a, b) => {
     // 时间排序
@@ -154,6 +210,15 @@ export default function CustomBoothReview() {
     if (heightType === '超高') return 'bg-red-100 text-red-700';
     if (heightType === '不超高') return 'bg-green-100 text-green-700';
     return 'bg-gray-100 text-gray-700';
+  };
+
+  const getReviewStatusBadge = (status: '待审' | '已通过' | '未通过' | '-' | undefined) => {
+    switch (status) {
+      case '已通过': return 'bg-green-100 text-green-700';
+      case '未通过': return 'bg-red-100 text-red-700';
+      case '待审': return 'bg-yellow-100 text-yellow-700';
+      default: return 'bg-gray-100 text-gray-500';
+    }
   };
 
   const formatSubmittedTime = (time: string | null | undefined) => {
@@ -334,7 +399,9 @@ export default function CustomBoothReview() {
               boothNumber: '',
               exhibitorName: '',
               heightType: '',
-              sortByTime: ''
+              sortByTime: '',
+              qualificationStatus: '',
+              drawingStatus: ''
             })}
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
           >
@@ -492,6 +559,66 @@ export default function CustomBoothReview() {
                       </div>
                     </div>
                   </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 relative">
+                    <div className="flex items-center gap-2">
+                      资质审查情况
+                      <div className="relative">
+                        <button
+                          onClick={() => setQualificationStatusDropdown(!qualificationStatusDropdown)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors"
+                          title="筛选资质审查情况"
+                        >
+                          <i className="fas fa-chevron-down text-xs"></i>
+                        </button>
+                        {qualificationStatusDropdown && (
+                          <div className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 min-w-max">
+                            {(['', '待审', '已通过', '未通过', '-'] as ReviewStatusFilter[]).map((opt) => (
+                              <button
+                                key={opt || 'all'}
+                                onClick={() => {
+                                  setFilters({ ...filters, qualificationStatus: opt });
+                                  setQualificationStatusDropdown(false);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg"
+                              >
+                                {opt || '全部'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 relative">
+                    <div className="flex items-center gap-2">
+                      图纸审查情况
+                      <div className="relative">
+                        <button
+                          onClick={() => setDrawingStatusDropdown(!drawingStatusDropdown)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors"
+                          title="筛选图纸审查情况"
+                        >
+                          <i className="fas fa-chevron-down text-xs"></i>
+                        </button>
+                        {drawingStatusDropdown && (
+                          <div className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 min-w-max">
+                            {(['', '待审', '已通过', '未通过', '-'] as ReviewStatusFilter[]).map((opt) => (
+                              <button
+                                key={opt || 'all'}
+                                onClick={() => {
+                                  setFilters({ ...filters, drawingStatus: opt });
+                                  setDrawingStatusDropdown(false);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg"
+                              >
+                                {opt || '全部'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系人</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">联系电话</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
@@ -521,6 +648,16 @@ export default function CustomBoothReview() {
                       <td className="px-4 py-3 text-sm text-gray-900">
                         <span className={booth.submitted_at ? 'text-gray-900' : 'text-gray-400'}>
                           {formatSubmittedTime(booth.submitted_at)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${getReviewStatusBadge(booth.qualification_review_status)}`}>
+                          {booth.qualification_review_status || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${getReviewStatusBadge(booth.drawing_review_status)}`}>
+                          {booth.drawing_review_status || '-'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">{booth.contact_name || '-'}</td>

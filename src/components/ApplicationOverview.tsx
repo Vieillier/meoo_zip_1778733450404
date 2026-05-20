@@ -253,7 +253,7 @@ export default function ApplicationOverview() {
 
   const filteredBooths = groupedByBooth.filter(booth => {
     if (filters.hallNumber && booth.hall_number !== filters.hallNumber) return false;
-    if (filters.boothNumber && booth.booth_number !== filters.boothNumber) return false;
+    if (filters.boothNumber && !booth.booth_number?.includes(filters.boothNumber)) return false;
     if (filters.showOnlyApplications && booth.hasApplicationCategories === 0) return false;
     if (filters.paymentStatus && booth.payment_status !== filters.paymentStatus) return false;
     if (filters.heightStatus) {
@@ -319,7 +319,6 @@ export default function ApplicationOverview() {
   });
 
   const uniqueHallNumbers = Array.from(new Set(groupedByBooth.map(b => b.hall_number).filter(Boolean)));
-  const uniqueBoothNumbers = Array.from(new Set(groupedByBooth.map(b => b.booth_number).filter(Boolean)));
 
   const formatApplicationTime = (applications: Application[]) => {
     const times = applications
@@ -357,10 +356,7 @@ export default function ApplicationOverview() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">展位号</label>
-            <select value={filters.boothNumber} onChange={(e) => setFilters({ ...filters, boothNumber: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-              <option value="">全部</option>
-              {uniqueBoothNumbers.map(booth => <option key={booth} value={booth}>{booth}</option>)}
-            </select>
+            <input type="text" value={filters.boothNumber} onChange={(e) => setFilters({ ...filters, boothNumber: e.target.value })} placeholder="搜索展位号..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">申报类别</label>
