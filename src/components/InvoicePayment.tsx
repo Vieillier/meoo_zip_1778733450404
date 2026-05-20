@@ -104,28 +104,45 @@ export default function InvoicePayment({ userId, boothNumber, isPreviewMode = fa
       return;
     }
     setSaving(true);
-    const { data: existing } = await supabase
-      .from('invoice_info')
-      .select('id')
-      .eq('booth_number', boothNumber)
-      .maybeSingle();
-    if (existing) {
-      await supabase.from('invoice_info').update({
-        ...invoiceInfo,
-        updated_at: new Date().toISOString()
-      }).eq('id', existing.id);
-    } else {
-      await supabase.from('invoice_info').insert({
-        ...invoiceInfo,
-        user_id: userId,
-        booth_number: boothNumber
-      });
+    try {
+      const { data: existing } = await supabase
+        .from('invoice_info')
+        .select('id')
+        .eq('booth_number', boothNumber)
+        .maybeSingle();
+
+      if (existing) {
+        const { error: updateError } = await supabase
+          .from('invoice_info')
+          .update({
+            ...invoiceInfo,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('invoice_info')
+          .insert({
+            ...invoiceInfo,
+            user_id: userId,
+            booth_number: boothNumber
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      setSaving(false);
+      setHasSavedData(true);
+      setIsEditMode(false);
+      localStorage.removeItem(`${STORAGE_KEY}_${boothNumber}`);
+      alert('开票信息已保存');
+    } catch (error) {
+      console.error('保存开票信息失败:', error);
+      setSaving(false);
+      alert('保存失败: ' + (error instanceof Error ? error.message : '未知错误'));
     }
-    setSaving(false);
-    setHasSavedData(true);
-    setIsEditMode(false);
-    localStorage.removeItem(`${STORAGE_KEY}_${boothNumber}`);
-    alert('开票信息已保存');
   };
 
   const handleEnableEditMode = () => {
