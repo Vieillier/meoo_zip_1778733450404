@@ -14,7 +14,7 @@ module.exports = (env, argv) => {
     entry: './src/index.tsx',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: isDev ? 'bundle.js' : 'js/[name].[contenthash:8].js',
+      filename: isDev ? '[name].bundle.js' : 'js/[name].[contenthash:8].js',
       chunkFilename: isDev ? '[name].chunk.js' : 'js/[name].[contenthash:8].chunk.js',
       publicPath: 'auto',
       clean: true

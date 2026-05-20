@@ -59,10 +59,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 使用 service role 权限查询所有展商数据和审图员数据
+    // 使用 service role 权限查询所有展商数据和审图员数据（只查询必要字段）
     const { data: profiles, error: profileError } = await supabaseUser
       .from('profiles')
-      .select('*')
+      .select('id, username, display_name, role, phone')
       .in('role', ['standard_exhibitor', 'custom_exhibitor', 'reviewer']);
 
     if (profileError) {
@@ -73,10 +73,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 获取所有展位信息
+    // 获取所有展位信息（只查询必要字段）
     const { data: booths, error: boothError } = await supabaseUser
       .from('exhibitor_booths')
-      .select('*');
+      .select('user_id, exhibitor_name, hall_number, booth_number, booth_area, booth_height, booth_category, email');
 
     if (boothError) {
       console.error('Failed to fetch booths:', boothError);

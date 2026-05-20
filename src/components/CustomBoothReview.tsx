@@ -67,21 +67,22 @@ export default function CustomBoothReview() {
 
       const boothNumbers = boothsData?.map(b => b.booth_number) || [];
 
-      const { data: boothInfoData } = await supabase
-        .from('booth_info')
-        .select('*')
-        .in('booth_number', boothNumbers);
+      if (boothNumbers.length === 0) {
+        setBooths([]);
+        setLoading(false);
+        return;
+      }
 
-      const { data: builderInfoData } = await supabase
-        .from('builder_info')
-        .select('*')
-        .in('booth_number', boothNumbers);
+      // 并行查询，减少等待时间
+      const [boothInfoResult, builderInfoResult, drawingDocsResult] = await Promise.all([
+        supabase.from('booth_info').select('booth_number, need_screen, screen_specification').in('booth_number', boothNumbers),
+        supabase.from('builder_info').select('booth_number, builder_name, contact_name, contact_phone, contact_email').in('booth_number', boothNumbers),
+        supabase.from('drawing_documents').select('booth_number, submitted_at').in('booth_number', boothNumbers)
+      ]);
 
-      // 获取图纸提交时间
-      const { data: drawingDocsData } = await supabase
-        .from('drawing_documents')
-        .select('booth_number, submitted_at')
-        .in('booth_number', boothNumbers);
+      const boothInfoData = boothInfoResult.data;
+      const builderInfoData = builderInfoResult.data;
+      const drawingDocsData = drawingDocsResult.data;
 
       const mergedData = boothsData?.map(booth => {
         const boothInfo = boothInfoData?.find(info => info.booth_number === booth.booth_number);
