@@ -2166,7 +2166,7 @@ function UserManagementPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredAccounts.map((account) => (
+              {filteredAccounts.filter(a => a.role !== 'reviewer').map((account) => (
                 <tr key={account.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900">{account.username}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{account.password}</td>
