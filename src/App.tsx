@@ -834,7 +834,7 @@ function ExcelImportModal({
   onClose: () => void;
   onImport: (result: { success: number; failed: number; updated: number }) => void;
 }) {
-  const { importUsers, accounts } = useAuth();
+  const { importUsers, accounts, isPreviewMode } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncingAuth, setIsSyncingAuth] = useState(false);
@@ -1834,34 +1834,24 @@ function UserManagementPage() {
     }
 
     try {
-      const { supabase } = await import('./supabase/client');
-      const email = generateVirtualEmail(newReviewer.username);
-      const normalizedPassword = normalizeExhibitorPassword(newReviewer.password);
+      const { supabase, getSupabaseUrl, getAuthHeaders } = await import('./supabase/client');
+      const headers = await getAuthHeaders();
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password: normalizedPassword,
-        options: {
-          data: {
-            username: newReviewer.username,
-            display_name: newReviewer.displayName,
-            role: 'reviewer'
-          }
-        }
+      const response = await fetch(`${getSupabaseUrl()}/functions/v1/create-reviewer`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          username: newReviewer.username,
+          password: newReviewer.password,
+          displayName: newReviewer.displayName,
+        }),
       });
 
-      if (authError) {
-        alert('创建审图员失败: ' + authError.message);
-        return;
-      }
+      const result = await response.json();
 
-      if (authData.user) {
-        await supabase.from('profiles').upsert({
-          id: authData.user.id,
-          username: newReviewer.username,
-          display_name: newReviewer.displayName,
-          role: 'reviewer'
-        }, { onConflict: 'id' });
+      if (!response.ok) {
+        alert('创建审图员失败: ' + (result.error || '未知错误'));
+        return;
       }
 
       await refreshAccounts();
