@@ -1,6 +1,7 @@
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
 
 require('dotenv').config({ path: path.resolve(__dirname, '.env.local') });
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
@@ -13,8 +14,10 @@ module.exports = (env, argv) => {
     entry: './src/index.tsx',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: 'bundle.js',
-      publicPath: 'auto'
+      filename: isDev ? 'bundle.js' : 'js/[name].[contenthash:8].js',
+      chunkFilename: isDev ? '[name].chunk.js' : 'js/[name].[contenthash:8].chunk.js',
+      publicPath: 'auto',
+      clean: true
     },
     module: {
       rules: [
@@ -86,12 +89,73 @@ module.exports = (env, argv) => {
     plugins: [
       new HtmlWebpackPlugin({
         template: './index.html',
-        inject: 'body'
+        inject: 'body',
+        minify: !isDev && {
+          removeComments: true,
+          collapseWhitespace: true,
+          removeAttributeQuotes: true,
+        }
       }),
       new webpack.DefinePlugin({
         'process.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
         'process.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
       }),
-    ]
+    ],
+    optimization: {
+      minimize: !isDev,
+      minimizer: [
+        new TerserPlugin({
+          terserOptions: {
+            compress: {
+              drop_console: !isDev,
+            },
+            output: {
+              comments: false,
+            },
+          },
+          extractComments: false,
+        }),
+      ],
+      splitChunks: {
+        chunks: 'all',
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            priority: 10,
+            reuseExistingChunk: true,
+            enforce: true,
+          },
+          supabase: {
+            test: /[\\/]node_modules[\\/]@supabase[\\/]/,
+            name: 'supabase',
+            priority: 20,
+            reuseExistingChunk: true,
+            enforce: true,
+          },
+          react: {
+            test: /[\\/]node_modules[\\/](react|react-dom|react-router-dom)[\\/]/,
+            name: 'react-vendors',
+            priority: 15,
+            reuseExistingChunk: true,
+            enforce: true,
+          },
+          common: {
+            minChunks: 2,
+            priority: 5,
+            reuseExistingChunk: true,
+            name: 'common',
+          },
+        },
+      },
+      runtimeChunk: {
+        name: 'runtime',
+      },
+    },
+    performance: {
+      hints: !isDev ? 'warning' : false,
+      maxEntrypointSize: 512000,
+      maxAssetSize: 512000,
+    },
   };
 };
