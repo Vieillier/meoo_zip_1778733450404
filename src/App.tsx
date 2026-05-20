@@ -804,6 +804,7 @@ function ExhibitorDashboard() {
 interface FilterState {
   exhibitorName: string;
   hallNumber: string;
+  boothNumber: string;
   boothCategory: string;
   boothHeightRange: string;
 }
@@ -1529,6 +1530,7 @@ function UserManagementPage() {
   const [filters, setFilters] = useState<FilterState>({
     exhibitorName: '',
     hallNumber: '',
+    boothNumber: '',
     boothCategory: '',
     boothHeightRange: ''
   });
@@ -1565,6 +1567,7 @@ function UserManagementPage() {
     if (!manageableRoles.includes(a.role)) return false;
     if (filters.exhibitorName && a.exhibitorName !== filters.exhibitorName) return false;
     if (filters.hallNumber && a.hallNumber !== filters.hallNumber) return false;
+    if (filters.boothNumber && !a.boothNumber?.includes(filters.boothNumber)) return false;
     if (filters.boothCategory && a.boothCategory !== filters.boothCategory) return false;
     if (filters.boothHeightRange) {
       const height = a.boothHeight || 0;
@@ -2171,7 +2174,7 @@ function UserManagementPage() {
             {/* 展商列表 */}
             {userManagementTab === 'exhibitors' && (
               <>
-                <div className="mb-6 flex gap-4">
+                <div className="mb-6 flex gap-4 items-center flex-wrap">
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -2192,6 +2195,24 @@ function UserManagementPage() {
                       批量删除 ({selectedUserIds.size})
                     </button>
                   )}
+                  <div className="relative ml-auto">
+                    <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input
+                      type="text"
+                      placeholder="搜索展位号..."
+                      value={filters.boothNumber}
+                      onChange={(e) => setFilters({ ...filters, boothNumber: e.target.value })}
+                      className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-48"
+                    />
+                    {filters.boothNumber && (
+                      <button
+                        onClick={() => setFilters({ ...filters, boothNumber: '' })}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <i className="fas fa-times text-xs"></i>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
         <div className="overflow-x-auto">
