@@ -35,15 +35,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: authInfo, error: authInfoError } = await supabaseAdmin.auth.getUser(accessToken);
-    if (authInfoError || !authInfo?.user) {
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(accessToken);
+    if (authError || !authUser) {
+      console.error('Auth error:', authError);
       return new Response(JSON.stringify({ error: '无效或过期的身份凭证' }), {
         status: 401,
         headers: corsHeaders,
       });
     }
 
-    const reviewerId = authInfo.user.id;
+    const reviewerId = authUser.id;
     const { data: reviewerProfile, error: reviewerProfileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
