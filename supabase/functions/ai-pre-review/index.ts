@@ -277,20 +277,30 @@ ${guideContext}
     const aiResult = await aiResponse.json();
 
     // 百炼多模态 API 的响应格式
+    let rawText = '';
     const aiContent = aiResult.output?.choices?.[0]?.message?.content || aiResult.output?.text;
 
-    if (!aiContent) {
+    if (Array.isArray(aiContent)) {
+      // 如果是数组，提取 text 字段
+      rawText = aiContent.map((item: any) => item.text || '').join('\n');
+    } else if (typeof aiContent === 'string') {
+      rawText = aiContent;
+    } else if (aiContent && typeof aiContent === 'object') {
+      rawText = (aiContent as any).text || JSON.stringify(aiContent);
+    }
+
+    if (!rawText) {
       console.error('[AI初审] AI 响应格式异常:', JSON.stringify(aiResult));
       throw new Error('AI 响应格式异常');
     }
 
-    console.log('[AI初审] AI 原始响应:', aiContent);
+    console.log('[AI初审] AI 原始响应文本:', rawText);
 
     // ========== 9. 解析 AI 返回的 JSON ==========
     let reviewResult: AIReviewResult;
     try {
       // 尝试直接解析 JSON
-      reviewResult = JSON.parse(aiContent);
+      reviewResult = JSON.parse(rawText);
 
       // 验证返回格式
       if (!reviewResult.suggestion || !reviewResult.reason) {
@@ -307,7 +317,7 @@ ${guideContext}
       console.error('[AI初审] 解析 AI 响应失败:', parseError);
 
       // 尝试从文本中提取 JSON
-      const jsonMatch = aiContent.match(/\{[\s\S]*"suggestion"[\s\S]*"reason"[\s\S]*\}/);
+      const jsonMatch = rawText.match(/\{[\s\S]*"suggestion"[\s\S]*"reason"[\s\S]*\}/);
       if (jsonMatch) {
         try {
           reviewResult = JSON.parse(jsonMatch[0]);
@@ -316,7 +326,7 @@ ${guideContext}
           // 降级处理：返回保守建议
           reviewResult = {
             suggestion: '驳回',
-            reason: 'AI 初审系统暂时无法给出明确建议，请人工审核。原始响应：' + aiContent.substring(0, 200)
+            reason: 'AI 初审系统暂时无法给出明确建议，请人工审核。原始响应：' + rawText.substring(0, 200)
           };
         }
       } else {
