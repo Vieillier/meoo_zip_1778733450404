@@ -56,6 +56,8 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isReviewed, setIsReviewed] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [aiReviewing, setAiReviewing] = useState(false);
+  const [boothId, setBoothId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDrawings();
@@ -64,6 +66,17 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
   const fetchDrawings = async () => {
     setLoading(true);
     try {
+      // 获取 booth_id
+      const { data: boothData } = await supabase
+        .from('exhibitor_booths')
+        .select('id')
+        .eq('booth_number', boothNumber)
+        .maybeSingle();
+
+      if (boothData) {
+        setBoothId(boothData.id);
+      }
+
       const { data: docData } = await supabase
         .from('drawing_documents')
         .select('*')
@@ -77,7 +90,7 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
         .order('uploaded_at', { ascending: false });
 
       const docs: DrawingsData = {};
-      
+
       DRAWING_TYPES.forEach(({ key, dbField }) => {
         docs[key] = {
           urls: [],
@@ -218,6 +231,129 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
     setSubmitting(false);
   };
 
+  // 再次审查功能 - 解锁审核状态
+  const handleReviewAgain = async () => {
+    if (!confirm('确认要重新审查吗？这将解锁审核状态，允许您修改审核结果。')) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { data: existing } = await supabase
+        .from('drawing_documents')
+        .select('id')
+        .eq('booth_number', boothNumber)
+        .maybeSingle();
+
+      if (!existing) {
+        alert('未找到审核记录');
+        setSubmitting(false);
+        return;
+      }
+
+      // 清空 last_reviewed_at，解锁审核状态
+      await supabase
+        .from('drawing_documents')
+        .update({ last_reviewed_at: null })
+        .eq('id', existing.id);
+
+      // 重新加载数据
+      await fetchDrawings();
+      alert('已解锁审核状态，您可以重新审查');
+    } catch (error) {
+      alert('解锁失败: ' + (error as Error).message);
+    }
+    setSubmitting(false);
+  };
+
+  // AI 初审功能
+  const handleAIReview = async () => {
+    if (!boothId) {
+      alert('无法获取展位信息');
+      return;
+    }
+
+    if (!confirm('确认要使用 AI 初审功能吗？AI 将分析图纸并自动填写审核意见。')) {
+      return;
+    }
+
+    setAiReviewing(true);
+    try {
+      console.log('[AI初审] 开始调用 AI 初审 API...');
+      console.log('[AI初审] Booth ID:', boothId);
+
+      // 获取当前会话的 access token
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('未获取到访问令牌，请重新登录');
+      }
+
+      // 构建 API URL（使用 supabase client 中的 URL）
+      const apiUrl = `${supabase.supabaseUrl}/functions/v1/ai-pre-review`;
+      console.log('[AI初审] API URL:', apiUrl);
+
+      // 调用 AI 初审 Edge Function
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ booth_id: boothId })
+      });
+
+      console.log('[AI初审] API 响应状态:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[AI初审] API 调用失败:', errorText);
+        throw new Error(`AI 初审失败 (${response.status}): ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('[AI初审] API 响应:', result);
+
+      if (!result.success) {
+        throw new Error(result.error || 'AI 初审失败');
+      }
+
+      const aiReview = result.ai_review;
+
+      // 如果 AI 建议驳回，自动填写审核意见
+      if (aiReview.suggestion === '驳回') {
+        // 找到第一个有图纸的项目，将其标记为 rejected 并填写 AI 的理由
+        const firstDrawingWithFiles = DRAWING_TYPES.find(({ key }) =>
+          drawings[key]?.urls?.length > 0
+        );
+
+        if (firstDrawingWithFiles) {
+          const updatedDrawings = { ...drawings };
+          updatedDrawings[firstDrawingWithFiles.key] = {
+            ...updatedDrawings[firstDrawingWithFiles.key],
+            status: 'rejected',
+            comment: `【AI 初审意见】\n${aiReview.reason}\n\n请审图员确认或修改此意见。`
+          };
+          setDrawings(updatedDrawings);
+
+          alert(`AI 初审完成！\n\n建议：${aiReview.suggestion}\n\n已自动将"${firstDrawingWithFiles.label}"标记为不通过，并填写了审核意见。请审图员确认或修改。`);
+        } else {
+          alert(`AI 初审完成！\n\n建议：${aiReview.suggestion}\n理由：${aiReview.reason}\n\n但未找到已上传的图纸，请手动操作。`);
+        }
+      } else {
+        // AI 建议通过
+        alert(`AI 初审完成！\n\n建议：${aiReview.suggestion}\n理由：${aiReview.reason}\n\n请审图员根据实际情况进行最终审核。`);
+      }
+
+    } catch (error) {
+      console.error('[AI初审] 错误:', error);
+      alert('AI 初审失败: ' + (error as Error).message);
+    } finally {
+      setAiReviewing(false);
+    }
+  };
+
   const getFileName = (url: string) => url.split('/').pop() || '文件';
   const isImage = (url: string) => /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
 
@@ -296,16 +432,55 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
 
             <div className="flex gap-4 mt-6">
               {!isReviewed ? (
-                <button onClick={handleSubmit} disabled={submitting || !allReviewed()} className={`flex-1 py-3 rounded-lg transition-colors disabled:opacity-50 ${allApproved ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                  {submitting ? '提交中...' : allApproved ? '审核通过' : '提交审核意见'}
-                </button>
+                <>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting || !allReviewed()}
+                    className={`flex-1 py-3 rounded-lg transition-colors disabled:opacity-50 ${allApproved ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                  >
+                    {submitting ? '提交中...' : allApproved ? '审核通过' : '提交审核意见'}
+                  </button>
+                  <button
+                    onClick={handleAIReview}
+                    disabled={aiReviewing || submitting || !boothId}
+                    className="flex-1 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    title="使用 AI 分析图纸并自动填写审核意见"
+                  >
+                    {aiReviewing ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin mr-2"></i>AI 分析中...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-robot mr-2"></i>AI 初审
+                      </>
+                    )}
+                  </button>
+                </>
               ) : (
                 <>
                   <div className="flex-1 py-3 bg-gray-100 text-gray-500 rounded-lg text-center">
                     <i className="fas fa-check-circle mr-2"></i>审核已完成
                   </div>
+                  <button
+                    onClick={handleReviewAgain}
+                    disabled={submitting}
+                    className="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    title="解锁审核状态，重新审查"
+                  >
+                    {submitting ? '处理中...' : (
+                      <>
+                        <i className="fas fa-redo mr-2"></i>再次审查
+                      </>
+                    )}
+                  </button>
                   {allApproved && (
-                    <button onClick={handleRejectAgain} disabled={submitting} className="flex-1 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50">
+                    <button
+                      onClick={handleRejectAgain}
+                      disabled={submitting}
+                      className="flex-1 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+                      title="驳回此次审核，展商需重新提交"
+                    >
                       {submitting ? '处理中...' : '可再次驳回'}
                     </button>
                   )}

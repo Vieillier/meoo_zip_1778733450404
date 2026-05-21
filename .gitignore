@@ -14,6 +14,11 @@
 *.pem
 *.key
 
+# Supabase
+supabase/.env
+supabase/.env.local
+.supabase/
+
 # 系统文件
 .DS_Store
 Thumbs.db
