@@ -320,30 +320,55 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
       }
 
       const aiReview = result.ai_review;
+      const updatedDrawings = { ...drawings };
+      let autoFilledCount = 0;
+      let rejectedCount = 0;
 
-      // 如果 AI 建议驳回，自动填写审核意见
-      if (aiReview.suggestion === '驳回') {
-        // 找到第一个有图纸的项目，将其标记为 rejected 并填写 AI 的理由
+      if (aiReview.details) {
+        DRAWING_TYPES.forEach(({ key, label }) => {
+          const detail = aiReview.details[key];
+          // 只有当展商上传了该图纸，且 AI 给出了具体的审查意见时才处理
+          if (detail && drawings[key]?.urls?.length > 0) {
+            const isRejected = detail.suggestion === '驳回';
+
+            updatedDrawings[key] = {
+              ...updatedDrawings[key],
+              status: isRejected ? 'rejected' : 'approved',
+              comment: `【AI 初审意见】\n${detail.reason}\n\n请审图员确认或修改此意见。`
+            };
+
+            if (isRejected) {
+              rejectedCount++;
+            }
+            autoFilledCount++;
+          }
+        });
+
+        setDrawings(updatedDrawings);
+
+        if (autoFilledCount > 0) {
+          alert(`AI 初审完成！\n\n总体建议：${aiReview.suggestion}\n\n已自动为 ${autoFilledCount} 类已上传的图纸填写了 AI 审查意见，并根据 AI 建议设置了“通过/不通过”状态（不通过：${rejectedCount} 项）。请审图员逐项确认或修改。`);
+        } else {
+          alert(`AI 初审完成！\n\n总体建议：${aiReview.suggestion}\n理由：${aiReview.reason}\n\n但未找到已上传的图纸，请手动操作。`);
+        }
+      } else {
+        // 降级处理：如果 AI 没有返回 details，则使用原来的逻辑
         const firstDrawingWithFiles = DRAWING_TYPES.find(({ key }) =>
           drawings[key]?.urls?.length > 0
         );
 
         if (firstDrawingWithFiles) {
-          const updatedDrawings = { ...drawings };
           updatedDrawings[firstDrawingWithFiles.key] = {
             ...updatedDrawings[firstDrawingWithFiles.key],
-            status: 'rejected',
+            status: aiReview.suggestion === '驳回' ? 'rejected' : 'approved',
             comment: `【AI 初审意见】\n${aiReview.reason}\n\n请审图员确认或修改此意见。`
           };
           setDrawings(updatedDrawings);
 
-          alert(`AI 初审完成！\n\n建议：${aiReview.suggestion}\n\n已自动将"${firstDrawingWithFiles.label}"标记为不通过，并填写了审核意见。请审图员确认或修改。`);
+          alert(`AI 初审完成！\n\n总体建议：${aiReview.suggestion}\n\n已自动将"${firstDrawingWithFiles.label}"标记为${aiReview.suggestion === '驳回' ? '不通过' : '通过'}，并填写了审核意见。请审图员确认或修改。`);
         } else {
-          alert(`AI 初审完成！\n\n建议：${aiReview.suggestion}\n理由：${aiReview.reason}\n\n但未找到已上传的图纸，请手动操作。`);
+          alert(`AI 初审完成！\n\n总体建议：${aiReview.suggestion}\n理由：${aiReview.reason}\n\n但未找到已上传的图纸，请手动操作。`);
         }
-      } else {
-        // AI 建议通过
-        alert(`AI 初审完成！\n\n建议：${aiReview.suggestion}\n理由：${aiReview.reason}\n\n请审图员根据实际情况进行最终审核。`);
       }
 
     } catch (error) {

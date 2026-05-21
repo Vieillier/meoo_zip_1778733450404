@@ -48,9 +48,15 @@ interface DrawingFile {
   file_url: string;
 }
 
+interface AIDrawingDetail {
+  suggestion: '通过' | '驳回';
+  reason: string;
+}
+
 interface AIReviewResult {
   suggestion: '通过' | '驳回';
   reason: string;
+  details?: Record<string, AIDrawingDetail>;
 }
 
 serve(async (req) => {
@@ -102,34 +108,44 @@ serve(async (req) => {
     console.log('[AI初审] 展位信息:', boothInfo);
 
     // ========== 4. 查询该展位的图纸文件 ==========
-    const { data: drawingFiles, error: drawingError } = await supabase
-      .from('drawing_submissions')
-      .select('file_path')
-      .eq('booth_id', booth_id)
-      .order('created_at', { ascending: false });
+    const { data: drawingDoc, error: drawingError } = await supabase
+      .from('drawing_documents')
+      .select('*')
+      .eq('booth_number', boothInfo.booth_number)
+      .maybeSingle();
 
     if (drawingError) {
       console.error('[AI初审] 查询图纸文件失败:', drawingError);
     }
 
-    // 获取图纸的公网 URL
-    const drawingUrls: DrawingFile[] = [];
-    if (drawingFiles && drawingFiles.length > 0) {
-      for (const file of drawingFiles) {
-        const { data: urlData } = supabase.storage
-          .from('drawing-files')
-          .getPublicUrl(file.file_path);
+    // 定义 8 类图纸字段和对应的中文标签
+    const drawingFields = [
+      { dbField: 'effect_drawing_urls', label: '多角度效果图' },
+      { dbField: 'elevation_grid_drawing_urls', label: '立面网格图' },
+      { dbField: 'plan_drawing_urls', label: '平面图' },
+      { dbField: 'structure_drawing_urls', label: '内部结构图' },
+      { dbField: 'material_drawing_urls', label: '材质图' },
+      { dbField: 'electrical_system_drawing_urls', label: '配电系统图' },
+      { dbField: 'utility_position_drawing_urls', label: '水电气网点位设施位置图' },
+      { dbField: 'fire_facility_drawing_urls', label: '消防设施布局图' }
+    ];
 
-        if (urlData?.publicUrl) {
-          drawingUrls.push({
-            file_path: file.file_path,
-            file_url: urlData.publicUrl
-          });
+    const drawingUrls: DrawingFile[] = [];
+    if (drawingDoc) {
+      for (const field of drawingFields) {
+        const urls = drawingDoc[field.dbField] || [];
+        for (const url of urls) {
+          if (url) {
+            drawingUrls.push({
+              file_path: field.label, // 用作图纸类型的标签
+              file_url: url
+            });
+          }
         }
       }
     }
 
-    console.log(`[AI初审] 找到 ${drawingUrls.length} 个图纸文件`);
+    console.log(`[AI初审] 成功找到 ${drawingUrls.length} 张图纸图片`);
 
     if (drawingUrls.length === 0) {
       console.warn('[AI初审] 该展位未上传图纸，将仅基于文字信息审查');
@@ -206,38 +222,54 @@ serve(async (req) => {
 ${guideContext}
 
 **审查要求**：
-1. 仔细查看图纸图片，检查结构设计、材料使用、尺寸标注等细节
-2. 对照审图规范，检查是否存在违规情况（例如：螺栓数量不足、高度超标、材料不符等）
-3. 如果图纸不清晰或信息不足，应建议"驳回"并要求补充材料
-4. 必须明确指出违反了哪条规范（如果有）
+1. 仔细查看每张图纸图片，检查结构设计、材料使用、尺寸标注等细节。
+2. 对照审图规范，检查是否存在违规情况（例如：螺栓数量不足、高度超标、材料不符等）。
+3. 必须对以下 8 类图纸进行逐个审查（如果上传了该图纸的话）：
+   - effect_drawing (多角度效果图)
+   - elevation_grid (立面网格图)
+   - plan_drawing (平面图)
+   - structure_drawing (内部结构图)
+   - material_drawing (材质图)
+   - power_system (配电系统图)
+   - utility_position (水电气网点位设施位置图)
+   - fire_facility (消防设施布局图)
+4. 如果某类图纸不清晰、信息不足或存在违规，该类图纸的建议应为"驳回"，并在 reason 中详细说明原因。如果完全符合规范，建议为"通过"。如果展商未上传该类图纸，建议为"通过"（并说明未上传）。
 
 **输出格式**：
-你必须返回一个 JSON 对象，格式如下：
+你必须返回一个 JSON 对象，格式如下（不要包含任何 markdown 标记，直接返回 JSON 字符串）：
 {
-  "suggestion": "通过" 或 "驳回",
-  "reason": "详细的审查意见，需标明具体违反的规范条款或图纸中发现的问题"
+  "suggestion": "通过" 或 "驳回" (如果任意一类图纸被驳回，则总体建议为"驳回"),
+  "reason": "总体审查意见总结",
+  "details": {
+    "effect_drawing": { "suggestion": "通过" 或 "驳回", "reason": "针对多角度效果图的审查意见，若未上传则写'未上传'" },
+    "elevation_grid": { "suggestion": "通过" 或 "驳回", "reason": "针对立面网格图的审查意见，若未上传则写'未上传'" },
+    "plan_drawing": { "suggestion": "通过" 或 "驳回", "reason": "针对平面图的审查意见，若未上传则写'未上传'" },
+    "structure_drawing": { "suggestion": "通过" 或 "驳回", "reason": "针对内部结构图的审查意见，若未上传则写'未上传'" },
+    "material_drawing": { "suggestion": "通过" 或 "驳回", "reason": "针对材质图的审查意见，若未上传则写'未上传'" },
+    "power_system": { "suggestion": "通过" 或 "驳回", "reason": "针对配电系统图的审查意见，若未上传则写'未上传'" },
+    "utility_position": { "suggestion": "通过" 或 "驳回", "reason": "针对水电气网点位设施位置图的审查意见，若未上传则写'未上传'" },
+    "fire_facility": { "suggestion": "通过" 或 "驳回", "reason": "针对消防设施布局图的审查意见，若未上传则写'未上传'" }
+  }
 }`;
 
     messageContent.push({
-      type: 'text',
       text: textPrompt
     });
 
     // 添加图纸图片（如果有）
     if (drawingUrls.length > 0) {
       console.log('[AI初审] 添加图纸图片到请求中...');
-      for (const drawing of drawingUrls.slice(0, 5)) { // 最多处理前5张图片
+      for (const drawing of drawingUrls.slice(0, 8)) { // 最多处理前8张图片
         messageContent.push({
-          type: 'image_url',
-          image_url: {
-            url: drawing.file_url
-          }
+          text: `\n【以下图片为：${drawing.file_path}】`
+        });
+        messageContent.push({
+          image: drawing.file_url
         });
       }
     } else {
       // 如果没有图纸，添加提示
       messageContent.push({
-        type: 'text',
         text: '\n⚠️ 注意：该展位未上传图纸文件，仅能基于文字信息进行初步审查。建议要求展商补充完整图纸。'
       });
     }
