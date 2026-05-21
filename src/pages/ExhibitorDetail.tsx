@@ -28,22 +28,27 @@ export default function ExhibitorDetail() {
   }, [id]);
 
   const fetchExhibitorData = async () => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    // 并发获取展商资料和展位信息，显著提升加载速度
+    const [profileResult, boothResult] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle(),
+      supabase
+        .from('exhibitor_booths')
+        .select('*')
+        .eq('user_id', id)
+        .maybeSingle()
+    ]);
+
+    const profile = profileResult.data;
+    const booth = boothResult.data;
 
     if (!profile) {
       setLoading(false);
       return;
     }
-
-    const { data: booth } = await supabase
-      .from('exhibitor_booths')
-      .select('*')
-      .eq('user_id', id)
-      .maybeSingle();
 
     setData({ profile, booth });
     if (booth) setFormData(booth);

@@ -66,28 +66,32 @@ export default function DrawingReview({ boothNumber, exhibitorName, onClose }: D
   const fetchDrawings = async () => {
     setLoading(true);
     try {
-      // 获取 booth_id
-      const { data: boothData } = await supabase
-        .from('exhibitor_booths')
-        .select('id')
-        .eq('booth_number', boothNumber)
-        .maybeSingle();
+      // 并发获取展位ID、图纸文档和历史记录，显著提升加载速度
+      const [boothResult, docResult, historyResult] = await Promise.all([
+        supabase
+          .from('exhibitor_booths')
+          .select('id')
+          .eq('booth_number', boothNumber)
+          .maybeSingle(),
+        supabase
+          .from('drawing_documents')
+          .select('*')
+          .eq('booth_number', boothNumber)
+          .maybeSingle(),
+        supabase
+          .from('drawing_history')
+          .select('*')
+          .eq('booth_number', boothNumber)
+          .order('uploaded_at', { ascending: false })
+      ]);
+
+      const boothData = boothResult.data;
+      const docData = docResult.data;
+      const historyData = historyResult.data;
 
       if (boothData) {
         setBoothId(boothData.id);
       }
-
-      const { data: docData } = await supabase
-        .from('drawing_documents')
-        .select('*')
-        .eq('booth_number', boothNumber)
-        .maybeSingle();
-
-      const { data: historyData } = await supabase
-        .from('drawing_history')
-        .select('*')
-        .eq('booth_number', boothNumber)
-        .order('uploaded_at', { ascending: false });
 
       const docs: DrawingsData = {};
 

@@ -90,7 +90,15 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
   const fetchDrawings = async () => {
     setLoading(true);
     try {
-      const { data } = await supabase.from('drawing_documents').select('*').eq('booth_number', boothNumber).maybeSingle();
+      // 并发获取图纸文档和历史记录，显著提升加载速度
+      const [docResult, historyResult] = await Promise.all([
+        supabase.from('drawing_documents').select('*').eq('booth_number', boothNumber).maybeSingle(),
+        supabase.from('drawing_history').select('*').eq('booth_number', boothNumber).order('uploaded_at', { ascending: false })
+      ]);
+
+      const data = docResult.data;
+      const historyData = historyResult.data;
+
       if (data) {
         setDrawings({
           effect_drawing_urls: data.effect_drawing_urls || [], elevation_grid_drawing_urls: data.elevation_grid_drawing_urls || [],
@@ -113,7 +121,6 @@ export default function DrawingSubmission({ boothNumber, isPreviewMode = false }
         setReviewRound(data.review_round || 0);
         setLastReviewedAt(data.last_reviewed_at);
       }
-      const { data: historyData } = await supabase.from('drawing_history').select('*').eq('booth_number', boothNumber).order('uploaded_at', { ascending: false });
       setHistory(historyData || []);
     } catch (error) { console.error('Error fetching drawings:', error); }
     setLoading(false);

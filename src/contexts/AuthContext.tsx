@@ -29,38 +29,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [allBooths, setAllBooths] = useState<ExhibitorBooth[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    setProfile(data);
-    return data;
-  };
-
-  const fetchBooth = async (userId: string, userRole: string) => {
-    if (userRole === 'admin' || userRole === 'reviewer') {
-      const { data } = await supabase
-        .from('exhibitor_booths')
+  const fetchProfileAndBooth = async (userId: string) => {
+    // 并发获取 profile 和当前用户的单个 booth，显著提升登录和首屏加载速度
+    const [profileResult, boothResult] = await Promise.all([
+      supabase
+        .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false });
-      setAllBooths(data || []);
-      setBooth(null);
-    } else {
-      const { data } = await supabase
+        .eq('id', userId)
+        .maybeSingle(),
+      supabase
         .from('exhibitor_booths')
         .select('*')
         .eq('user_id', userId)
-        .maybeSingle();
-      setBooth(data);
-      setAllBooths(data ? [data] : []);
+        .maybeSingle()
+    ]);
+
+    const profileData = profileResult.data;
+    setProfile(profileData);
+
+    if (profileData) {
+      if (profileData.role === 'admin' || profileData.role === 'reviewer') {
+        // 如果是管理员/审图员，再异步获取所有展位
+        const { data } = await supabase
+          .from('exhibitor_booths')
+          .select('*')
+          .order('created_at', { ascending: false });
+        setAllBooths(data || []);
+        setBooth(null);
+      } else {
+        const boothData = boothResult.data;
+        setBooth(boothData);
+        setAllBooths(boothData ? [boothData] : []);
+      }
     }
+    return profileData;
   };
 
   const refreshBooth = async () => {
     if (user && profile) {
-      await fetchBooth(user.id, profile.role);
+      // 刷新时也可以使用并发优化
+      const [profileResult, boothResult] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        profile.role === 'admin' || profile.role === 'reviewer'
+          ? supabase.from('exhibitor_booths').select('*').order('created_at', { ascending: false })
+          : supabase.from('exhibitor_booths').select('*').eq('user_id', user.id).maybeSingle()
+      ]);
+
+      setProfile(profileResult.data);
+      if (profile.role === 'admin' || profile.role === 'reviewer') {
+        setAllBooths((boothResult.data as ExhibitorBooth[]) || []);
+        setBooth(null);
+      } else {
+        const b = boothResult.data as ExhibitorBooth;
+        setBooth(b);
+        setAllBooths(b ? [b] : []);
+      }
     }
   };
 
@@ -72,10 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(newSession?.user ?? null);
         if (newSession?.user) {
           setTimeout(async () => {
-            const profileData = await fetchProfile(newSession.user.id);
-            if (profileData) {
-              await fetchBooth(newSession.user.id, profileData.role);
-            }
+            await fetchProfileAndBooth(newSession.user.id);
           }, 0);
         } else {
           console.warn('[Auth] No active session on auth state change; protected routes should remain locked.');
@@ -92,10 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(existingSession);
       setUser(existingSession?.user ?? null);
       if (existingSession?.user) {
-        const profileData = await fetchProfile(existingSession.user.id);
-        if (profileData) {
-          await fetchBooth(existingSession.user.id, profileData.role);
-        }
+        await fetchProfileAndBooth(existingSession.user.id);
       }
       setLoading(false);
     });
