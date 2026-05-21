@@ -107,7 +107,8 @@ export default function BuilderInfo({ boothNumber, isPreviewMode = false }: Buil
         if (insertError) throw insertError;
       }
 
-      setIsLocked(true);
+      // 保存成功后重新获取数据，确保 UI 与数据库同步
+      await fetchBuilderInfo();
       setSaving(false);
       alert('搭建商信息已保存');
     } catch (error) {
