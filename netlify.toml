@@ -1,0 +1,12 @@
+[build]
+  command = "pnpm run build"
+  publish = "dist"
+
+[build.environment]
+  VITE_SUPABASE_URL = "https://aakexkggqspgpimfwlkn.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "sb_publishable_Bee1XtMi-nVORakNZqFhxw_EuvxtAVb"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

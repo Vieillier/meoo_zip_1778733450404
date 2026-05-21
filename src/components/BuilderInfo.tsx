@@ -74,6 +74,12 @@ export default function BuilderInfo({ boothNumber, isPreviewMode = false }: Buil
     }
     setSaving(true);
     try {
+      // 检查认证状态
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error('未登录或会话已过期，请重新登录');
+      }
+
       const { data: existing } = await supabase
         .from('builder_info')
         .select('id')
@@ -107,7 +113,8 @@ export default function BuilderInfo({ boothNumber, isPreviewMode = false }: Buil
     } catch (error) {
       console.error('保存搭建商信息失败:', error);
       setSaving(false);
-      alert('保存失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      alert('保存失败: ' + errorMessage);
     }
   };
 
