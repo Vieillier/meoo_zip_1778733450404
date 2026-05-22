@@ -68,30 +68,12 @@ export default function Login() {
       console.log('[Auth] Session用户ID:', data.session.user?.id);
       console.log('[Auth] 第3步: 验证会话是否已经成功建立');
 
-      // Step 3: 等待Supabase Auth会话可用
-      let sessionResult = await supabase.auth.getSession();
-      let session = sessionResult.data?.session;
-      let attempts = 0;
-      const maxAttempts = 10;
-      
-      while ((!session || !session.user || !session.access_token) && attempts < maxAttempts) {
-        console.log('[Auth] 等待会话保存... 尝试', attempts + 1, '/', maxAttempts);
-        await new Promise((r) => setTimeout(r, 200));
-        sessionResult = await supabase.auth.getSession();
-        session = sessionResult.data?.session;
-        attempts += 1;
-      }
-
-      console.log('[Auth] ✓ 会话验证完毕');
-      console.log('[Auth] 会话有效:', !!session?.user);
-      console.log('[Auth] Access Token存在:', !!session?.access_token);
-      console.log('[Auth] 用户ID:', session?.user?.id);
-      console.log('[Auth] 尝试次数:', attempts);
+      // Step 3: 直接使用登录返回的会话数据，无需轮询等待，显著提升登录速度
+      const session = data?.session;
 
       if (!session || !session.user || !session.access_token) {
-        console.error('[Auth] ✗ 会话验证失败');
-        console.error('[Auth] 会话对象:', session);
-        setError('登录后会话验证失败，请重试');
+        console.error('[Auth] ✗ 会话无效');
+        setError('登录后会话创建失败，请重试');
         setLoading(false);
         return;
       }

@@ -67,20 +67,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshBooth = async () => {
     if (user && profile) {
-      // 刷新时也可以使用并发优化
-      const [profileResult, boothResult] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-        profile.role === 'admin' || profile.role === 'reviewer'
-          ? supabase.from('exhibitor_booths').select('*').order('created_at', { ascending: false })
-          : supabase.from('exhibitor_booths').select('*').eq('user_id', user.id).maybeSingle()
-      ]);
+      const { data } = await (profile.role === 'admin' || profile.role === 'reviewer'
+        ? supabase.from('exhibitor_booths').select('*').order('created_at', { ascending: false })
+        : supabase.from('exhibitor_booths').select('*').eq('user_id', user.id).maybeSingle());
 
-      setProfile(profileResult.data);
       if (profile.role === 'admin' || profile.role === 'reviewer') {
-        setAllBooths((boothResult.data as ExhibitorBooth[]) || []);
+        setAllBooths((data as ExhibitorBooth[]) || []);
         setBooth(null);
       } else {
-        const b = boothResult.data as ExhibitorBooth;
+        const b = data as ExhibitorBooth;
         setBooth(b);
         setAllBooths(b ? [b] : []);
       }

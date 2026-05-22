@@ -123,8 +123,8 @@ export default function ApplicationOverview() {
   const [showPaymentNoticeModal, setShowPaymentNoticeModal] = useState(false);
 
   useEffect(() => {
-    fetchFeeRules();
-    fetchApplications();
+    // 并发获取费用规则和申请列表，显著提升首屏加载速度
+    Promise.all([fetchFeeRules(), fetchApplications()]);
   }, []);
 
   const fetchFeeRules = async () => {
